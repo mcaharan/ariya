@@ -114,7 +114,6 @@ export default function Emergency({ child, emergencyItems = [], headerImage = nu
                     </div>
                 </div>
             </div>
-
             {/* Popup */}
             {popup && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
