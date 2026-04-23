@@ -14,7 +14,7 @@ return new class extends Migration
             return;
         }
 
-        $database = env('DB_DATABASE');
+        $database = DB::getDatabaseName();
 
         // Check information_schema to see if the foreign key already exists
         $rows = DB::select(
@@ -37,7 +37,7 @@ return new class extends Migration
             return;
         }
 
-        $database = env('DB_DATABASE');
+        $database = DB::getDatabaseName();
 
         $rows = DB::select(
             'SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME = ?',

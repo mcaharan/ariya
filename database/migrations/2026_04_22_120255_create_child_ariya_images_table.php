@@ -10,7 +10,9 @@ return new class extends Migration
     {
         Schema::create('child_ariya_images', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('ariya_item_id')->constrained('child_ariya_items')->cascadeOnDelete();
+            // FK is added in a later migration to avoid same-timestamp ordering issues.
+            $table->unsignedBigInteger('ariya_item_id');
+            $table->index('ariya_item_id');
             $table->string('image');
             $table->string('caption')->nullable();
             $table->unsignedSmallInteger('sort_order')->default(0);
