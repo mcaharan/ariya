@@ -8,6 +8,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\ChildrenController;
 use App\Models\Child;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 
 Route::get('/', function () {
     if (Auth::check()) {
@@ -16,6 +17,20 @@ Route::get('/', function () {
 
     return redirect()->route('login');
 });
+
+Route::get('/storage/{path}', function (string $path) {
+    $normalized = ltrim($path, '/');
+
+    if ($normalized === '' || str_contains($normalized, '..')) {
+        abort(404);
+    }
+
+    if (! Storage::disk('public')->exists($normalized)) {
+        abort(404);
+    }
+
+    return Storage::disk('public')->response($normalized);
+})->where('path', '.*');
 
 Route::get('/dashboard', function () {
     $user = Auth::user();
