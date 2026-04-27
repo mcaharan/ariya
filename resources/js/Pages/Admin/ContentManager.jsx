@@ -1362,6 +1362,19 @@ function AriyaTeamManager({ child, users }) {
 
 /* ── Dashboard Menu Panel (preset + custom) ── */
 
+const IMAGE_TO_SECTION = {
+    'emg.png':         'Emergency',
+    'mt-m.png':        'Mandatory Tasks',
+    'f-c.png':         'Face Sheet',
+    'at.png':          'Ariya Tube',
+    'arts.png':        'Ariya Art',
+    'm.png':           'Medication',
+    'sleep.png':       'Sleep',
+    't.png':           'Team Training',
+    'team.png':        'Team',
+    'ariya-team.png':  'Ariya Team',
+};
+
 function DashboardMenuPanel({ child }) {
     const [selectedMenuItems, setSelectedMenuItems] = useState(() => {
         const existing = child.menu_items || [];
@@ -1382,6 +1395,9 @@ function DashboardMenuPanel({ child }) {
     const update = (image, field, value) =>
         setSelectedMenuItems(prev => prev.map(i => i.image === image ? { ...i, [field]: value } : i));
 
+    const remove = (image) =>
+        setSelectedMenuItems(prev => prev.filter(i => i.image !== image));
+
     const save = () => {
         const items = selectedMenuItems.map(m => ({ image: m.image, label: m.label, href: '#', sort_order: m.sort_order, is_active: m.is_active }));
         router.post(route('children.menu-items.sync', child.id), { items }, { preserveScroll: true });
@@ -1393,15 +1409,26 @@ function DashboardMenuPanel({ child }) {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Preset Items</p>
                 <div className="space-y-2">
                     {selectedMenuItems.map((item) => (
-                        <div key={item.image} className={`grid grid-cols-[40px_1fr_80px_56px] items-center gap-3 rounded-lg border p-2.5 ${item.is_active ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}>
+                        <div key={item.image} className={`grid grid-cols-[40px_1fr_auto_80px_56px_24px] items-center gap-3 rounded-lg border p-2.5 ${item.is_active ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}>
                             <img src={`/images/dashboard/${item.image}`} className="h-9 w-9 object-contain" />
-                            <span className="text-sm font-medium text-gray-700">{item.label}</span>
+                            <input
+                                type="text"
+                                value={item.label}
+                                onChange={(e) => update(item.image, 'label', e.target.value)}
+                                className="rounded border-gray-300 text-sm shadow-sm w-full"
+                            />
+                            <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 whitespace-nowrap">
+                                → {IMAGE_TO_SECTION[item.image] || '—'}
+                            </span>
                             <input type="number" min="0" value={item.sort_order} onChange={(e) => update(item.image, 'sort_order', parseInt(e.target.value) || 0)} className="w-full rounded border-gray-300 text-center text-sm shadow-sm" />
                             <div className="flex justify-center">
                                 <button type="button" onClick={() => update(item.image, 'is_active', !item.is_active)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.is_active ? 'bg-indigo-600' : 'bg-gray-300'}`}>
                                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${item.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
                                 </button>
                             </div>
+                            <button type="button" onClick={() => remove(item.image)} className="flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors" title="Remove">
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
                         </div>
                     ))}
                 </div>
