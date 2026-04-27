@@ -3,6 +3,7 @@ import Dropdown from '@/Components/Dropdown';
 import NavLink from '@/Components/NavLink';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import Sidebar from '@/Components/Sidebar';
+import { ToastProvider } from '@/Components/Toast';
 import { Link, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -22,6 +23,7 @@ export default function AuthenticatedLayout({ header, children }) {
     // Superadmin gets sidebar layout
     if (isSuperadmin) {
         return (
+            <ToastProvider>
             <div className="flex min-h-screen bg-gray-100">
 
                 {/* Sidebar — desktop */}
@@ -100,11 +102,13 @@ export default function AuthenticatedLayout({ header, children }) {
                     <main className="flex-1 py-6">{children}</main>
                 </div>
             </div>
+            </ToastProvider>
         );
     }
 
     // Regular users get top navbar layout
     return (
+        <ToastProvider>
         <div className="min-h-screen bg-gray-100">
             <nav className="border-b border-gray-100 bg-white relative z-50">
                 <div className="w-full px-4 sm:px-6 lg:px-8">
@@ -226,5 +230,6 @@ export default function AuthenticatedLayout({ header, children }) {
                 </div>
             </div>
         </div>
+        </ToastProvider>
     );
 }

@@ -24,6 +24,10 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user,
                 'menuPermissions' => $user ? $user->grantedMenus() : [],
             ],
+            'flash' => [
+                'success' => session()->pull('success'),
+                'error'   => session()->pull('error'),
+            ],
         ];
     }
 }

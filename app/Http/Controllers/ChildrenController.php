@@ -1514,8 +1514,8 @@ class ChildrenController extends Controller
         }
 
         $scheduleUsers = $actor->isSuperadmin()
-            ? User::orderBy('name')->get(['id', 'name', 'role'])
-            : collect();
+            ? \App\Models\User::orderBy('name')->get(['id', 'name'])
+            : \App\Models\User::where('id', $actor->id)->get(['id', 'name']);
 
         return Inertia::render('Admin/ContentManager', [
             'children'      => $children,
