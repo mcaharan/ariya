@@ -16,7 +16,6 @@ const ALL_MENU_ITEMS = [
     { image: 'sleep.png',      label: 'Sleep' },
     { image: 't.png',          label: 'Task' },
     { image: 'team.png',       label: 'Team' },
-    { image: 'ariya-team.png', label: 'Ariya Team' },
 ];
 
 const CONTENT_TYPES = [
@@ -67,7 +66,6 @@ const SECTIONS = [
     { key: 'ariya-art',       label: 'Ariya Art',        image: 'arts.png' },
     { key: 'sleep',           label: 'Sleep',            image: 'sleep.png' },
     { key: 'team-training',   label: 'Team Training',    image: 't.png' },
-    { key: 'ariya-team',      label: 'Ariya Team',       image: 'ariya-team.png' },
     { key: 'medication',      label: 'Medication',       image: 'm.png' },
     { key: 'page-headers',    label: 'Page Headers',     image: null },
 ];
@@ -1372,7 +1370,6 @@ const IMAGE_TO_SECTION = {
     'sleep.png':       'Sleep',
     't.png':           'Team Training',
     'team.png':        'Team',
-    'ariya-team.png':  'Ariya Team',
 };
 
 function DashboardMenuPanel({ child }) {
@@ -1467,8 +1464,6 @@ function SectionPanel({ sectionKey, child, scheduleUsers }) {
             return wrap(<AriyaItemsManager child={child} type="sleep" />);
         case 'team-training':
             return wrap(<><TeamTitleEditor child={child} /><div className="border-t my-4" /><CustomTeamItems child={child} /></>);
-        case 'ariya-team':
-            return <div className="flex-1 overflow-hidden flex flex-col"><AriyaTeamManager child={child} users={scheduleUsers} /></div>;
         case 'medication':
             return wrap(<MedSlotsManager child={child} />);
         case 'page-headers':
