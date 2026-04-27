@@ -92,6 +92,7 @@ export default function Emergency({ child, emergencyItems = [], headerImage = nu
                     headerImage={headerImage}
                     backHref={route('children.show', child.id)}
                     title={child.emergency_title || 'Emergency'}
+                    child={child}
                 />
 
                 {/* Image grid */}
@@ -126,7 +127,7 @@ export default function Emergency({ child, emergencyItems = [], headerImage = nu
                         </div>
 
                         <div className="mt-8 w-full space-y-4">
-                            <h2 className="text-lg font-bold text-gray-900">{popup.title}</h2>
+                            <h2 className="text-lg font-bold text-gray-900" style={{ fontFamily: 'Conthrax, sans-serif' }}>{popup.title}</h2>
                             <PopupContent item={popup} />
                         </div>
 

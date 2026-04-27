@@ -15,6 +15,7 @@ use App\Models\ChildMedItem;
 use App\Models\ChildMedConfirmation;
 use App\Models\ChildMenuItem;
 use App\Models\ChildPageHeader;
+use App\Models\AriyaTeamSchedule;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -740,7 +741,7 @@ class ChildrenController extends Controller
         }
 
         if ($actor->isSuperadmin()) {
-            $children = Child::with(['users', 'menuItems' => fn($q) => $q->orderBy('sort_order'), 'emergencyItems' => fn($q) => $q->orderBy('sort_order'), 'mandatoryItems' => fn($q) => $q->orderBy('sort_order'), 'ariyaItems' => fn($q) => $q->orderBy('sort_order')->with(['images']), 'galleryItems' => fn($q) => $q->orderBy('sort_order'), 'medSlots' => fn($q) => $q->orderBy('sort_order')->with('items'), 'teamItems' => fn($q) => $q->orderBy('sort_order')->with(['subItems']), 'pageHeaders'])->orderBy('id', 'desc')->get(['id','name','photo','emergency_title','mandatory_title','team_title','face_sheet_pdf']);
+            $children = Child::with(['users', 'menuItems' => fn($q) => $q->orderBy('sort_order'), 'emergencyItems' => fn($q) => $q->orderBy('sort_order'), 'mandatoryItems' => fn($q) => $q->orderBy('sort_order'), 'ariyaItems' => fn($q) => $q->orderBy('sort_order')->with(['images']), 'galleryItems' => fn($q) => $q->orderBy('sort_order'), 'medSlots' => fn($q) => $q->orderBy('sort_order')->with('items'), 'teamItems' => fn($q) => $q->orderBy('sort_order')->with(['subItems']), 'pageHeaders', 'teamSchedules' => fn($q) => $q->orderBy('shift_date')->orderBy('sort_order')->with('user:id,name')])->orderBy('id', 'desc')->get(['id','name','photo','emergency_title','mandatory_title','team_title','face_sheet_pdf','ariya_team_calendar_url','schedule_email_recipients']);
         } else {
             $children = Child::with(['users', 'menuItems' => fn($q) => $q->orderBy('sort_order'), 'emergencyItems' => fn($q) => $q->orderBy('sort_order'), 'mandatoryItems' => fn($q) => $q->orderBy('sort_order'), 'ariyaItems' => fn($q) => $q->orderBy('sort_order')->with(['images']), 'galleryItems' => fn($q) => $q->orderBy('sort_order'), 'medSlots' => fn($q) => $q->orderBy('sort_order')->with('items'), 'pageHeaders'])
                 ->whereHas('users', function ($query) use ($actor) {
@@ -754,10 +755,15 @@ class ChildrenController extends Controller
             ? User::whereIn('role', ['manager', 'sub user'])->orderBy('name')->get()
             : collect();
 
+        $scheduleUsers = $actor->isSuperadmin()
+            ? User::orderBy('name')->get(['id', 'name', 'role'])
+            : collect();
+
         return Inertia::render('Admin/Children', [
-            'children' => $children,
+            'children'       => $children,
             'assignableUsers' => $assignableUsers,
-            'isSuperadmin' => $actor->isSuperadmin(),
+            'scheduleUsers'  => $scheduleUsers,
+            'isSuperadmin'   => $actor->isSuperadmin(),
         ]);
     }
 
@@ -1401,5 +1407,315 @@ class ChildrenController extends Controller
         $child->save();
 
         return redirect()->back();
+    }
+
+    /* ── Ariya Team ── */
+
+    public function ariyaTeam(Child $child)
+    {
+        $actor = auth()->user();
+        if (!$actor) abort(403);
+        if (!$actor->isSuperadmin()) {
+            $allowed = $actor->children()->where('children.id', $child->id)->exists();
+            if (!$allowed) abort(403);
+        }
+
+        $schedules = AriyaTeamSchedule::where('child_id', $child->id)
+            ->where('is_active', true)
+            ->orderBy('shift_date')
+            ->orderBy('sort_order')
+            ->with('user:id,name')
+            ->get(['id', 'user_id', 'shift_date', 'start_time', 'end_time', 'sort_order']);
+
+        return Inertia::render('Child/AriyaTeam', [
+            'child'       => $child->only('id', 'name', 'photo', 'ariya_team_calendar_url'),
+            'schedules'   => $schedules,
+            'headerImage' => $this->pageHeader($child, 'ariya-team'),
+        ]);
+    }
+
+    public function updateAriyaTeamCalendarUrl(Request $request, Child $child)
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+        $data = $request->validate(['calendar_url' => 'nullable|string|max:500']);
+        $child->update(['ariya_team_calendar_url' => $data['calendar_url'] ?? null]);
+        return redirect()->back();
+    }
+
+    public function storeTeamSchedule(Request $request, Child $child)
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+        $data = $request->validate([
+            'user_id'    => 'nullable|exists:users,id',
+            'shift_date' => 'required|date',
+            'start_time' => 'required|string|regex:/^\d{2}:\d{2}$/',
+            'end_time'   => 'required|string|regex:/^\d{2}:\d{2}$/',
+            'sort_order' => 'integer|min:0',
+            'is_active'  => 'boolean',
+        ]);
+        AriyaTeamSchedule::create(array_merge($data, ['child_id' => $child->id]));
+        return redirect()->back();
+    }
+
+    public function updateTeamSchedule(Request $request, Child $child, AriyaTeamSchedule $schedule)
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+        $data = $request->validate([
+            'user_id'    => 'nullable|exists:users,id',
+            'shift_date' => 'required|date',
+            'start_time' => 'required|string|regex:/^\d{2}:\d{2}$/',
+            'end_time'   => 'required|string|regex:/^\d{2}:\d{2}$/',
+            'sort_order' => 'integer|min:0',
+            'is_active'  => 'boolean',
+        ]);
+        $schedule->update($data);
+        return redirect()->back();
+    }
+
+    public function destroyTeamSchedule(Child $child, AriyaTeamSchedule $schedule)
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+        $schedule->delete();
+        return redirect()->back();
+    }
+
+    /* ── Content Manager ── */
+
+    public function contentManagerIndex()
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->hasMenuAccess('children')) abort(403);
+
+        $with = [
+            'menuItems'      => fn($q) => $q->orderBy('sort_order'),
+            'emergencyItems' => fn($q) => $q->orderBy('sort_order'),
+            'mandatoryItems' => fn($q) => $q->orderBy('sort_order'),
+            'ariyaItems'     => fn($q) => $q->orderBy('sort_order')->with(['images']),
+            'galleryItems'   => fn($q) => $q->orderBy('sort_order'),
+            'medSlots'       => fn($q) => $q->orderBy('sort_order')->with('items'),
+            'teamItems'      => fn($q) => $q->orderBy('sort_order')->with(['subItems']),
+            'pageHeaders',
+            'teamSchedules'  => fn($q) => $q->orderBy('shift_date')->orderBy('sort_order')->with('user:id,name'),
+        ];
+
+        $cols = ['id','name','photo','emergency_title','mandatory_title','team_title','face_sheet_pdf','ariya_team_calendar_url','schedule_email_recipients'];
+
+        if ($actor->isSuperadmin()) {
+            $children = Child::with($with)->orderBy('name')->get($cols);
+        } else {
+            $children = Child::with($with)
+                ->whereHas('users', fn($q) => $q->where('users.id', $actor->id))
+                ->orderBy('name')
+                ->get($cols);
+        }
+
+        $scheduleUsers = $actor->isSuperadmin()
+            ? User::orderBy('name')->get(['id', 'name', 'role'])
+            : collect();
+
+        return Inertia::render('Admin/ContentManager', [
+            'children'      => $children,
+            'scheduleUsers' => $scheduleUsers,
+        ]);
+    }
+
+    /* ── Schedule Email ── */
+
+    public function scheduleEmailIndex()
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+
+        $children = Child::orderBy('name')
+            ->get(['id', 'name', 'photo', 'schedule_email_recipients', 'schedule_email_cc', 'schedule_email_bcc', 'schedule_email_time', 'schedule_email_subject', 'weekly_email_recipients', 'weekly_email_cc', 'weekly_email_bcc', 'weekly_email_time', 'weekly_email_subject', 'weekly_email_day']);
+
+        return Inertia::render('Admin/ScheduleEmail', [
+            'children' => $children,
+        ]);
+    }
+
+    public function updateScheduleEmailRecipients(Request $request, Child $child)
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+
+        $data = $request->validate([
+            'recipients'   => 'nullable|array',
+            'recipients.*' => 'nullable|email|max:255',
+            'cc'           => 'nullable|array',
+            'cc.*'         => 'nullable|email|max:255',
+            'bcc'          => 'nullable|array',
+            'bcc.*'        => 'nullable|email|max:255',
+            'subject'      => 'nullable|string|max:255',
+            'send_time'    => 'nullable|string|regex:/^\d{2}:\d{2}$/',
+        ]);
+
+        $clean = fn($arr) => array_values(array_filter($arr ?? [], fn($e) => !empty(trim($e))));
+        $child->update([
+            'schedule_email_recipients' => $clean($data['recipients']) ?: null,
+            'schedule_email_cc'         => $clean($data['cc']) ?: null,
+            'schedule_email_bcc'        => $clean($data['bcc']) ?: null,
+            'schedule_email_subject'    => $data['subject'] ?? null,
+            'schedule_email_time'       => $data['send_time'] ?? '13:30',
+        ]);
+
+        return redirect()->back()->with('success', 'Settings saved.');
+    }
+
+    public function previewScheduleEmail(Request $request, Child $child)
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+
+        $date = $request->input('date', now()->timezone('Asia/Kolkata')->toDateString());
+
+        $schedules = AriyaTeamSchedule::where('child_id', $child->id)
+            ->where('shift_date', $date)
+            ->where('is_active', true)
+            ->with('user:id,name')
+            ->orderBy('sort_order')
+            ->get();
+
+        $scheduleData = $schedules->map(fn($s) => [
+            'name'  => $s->user?->name ?? 'TBD',
+            'start' => $this->fmt12($s->start_time),
+            'end'   => $this->fmt12($s->end_time),
+        ])->toArray();
+
+        $html = view('emails.daily_schedule', [
+            'child'     => $child,
+            'schedules' => $scheduleData,
+            'date'      => $date,
+        ])->render();
+
+        return response()->json(['html' => $html]);
+    }
+
+    public function sendDailyScheduleEmail(Request $request, Child $child)
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+
+        $date = $request->input('date', now()->toDateString());
+
+        $schedules = AriyaTeamSchedule::where('child_id', $child->id)
+            ->where('shift_date', $date)
+            ->where('is_active', true)
+            ->with('user:id,name')
+            ->orderBy('sort_order')
+            ->get();
+
+        $recipients = $child->schedule_email_recipients ?? [];
+
+        if (empty($recipients)) {
+            return redirect()->back()->withErrors(['email' => 'No email recipients configured.']);
+        }
+
+        $scheduleData = $schedules->map(fn($s) => [
+            'name'  => $s->user?->name ?? 'TBD',
+            'start' => $this->fmt12($s->start_time),
+            'end'   => $this->fmt12($s->end_time),
+        ])->toArray();
+
+        $cc  = array_filter($child->schedule_email_cc  ?? []);
+        $bcc = array_filter($child->schedule_email_bcc ?? []);
+        $mailer = \Mail::to($recipients);
+        if (!empty($cc))  $mailer = $mailer->cc($cc);
+        if (!empty($bcc)) $mailer = $mailer->bcc($bcc);
+        $mailer->send(new \App\Mail\DailyScheduleMail($child, $scheduleData, $date));
+
+        return redirect()->back()->with('success', 'Schedule email sent to ' . count($recipients) . ' recipient(s).');
+    }
+
+    /* ── Weekly Schedule Email ── */
+
+    public function updateWeeklyEmailSettings(Request $request, Child $child)
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+
+        $data = $request->validate([
+            'recipients'   => 'nullable|array',
+            'recipients.*' => 'nullable|email|max:255',
+            'cc'           => 'nullable|array',
+            'cc.*'         => 'nullable|email|max:255',
+            'bcc'          => 'nullable|array',
+            'bcc.*'        => 'nullable|email|max:255',
+            'subject'      => 'nullable|string|max:255',
+            'send_time'    => 'nullable|string|regex:/^\d{2}:\d{2}$/',
+            'send_day'     => 'nullable|integer|min:0|max:6',
+        ]);
+
+        $clean = fn($arr) => array_values(array_filter($arr ?? [], fn($e) => !empty(trim($e))));
+        $child->update([
+            'weekly_email_recipients' => $clean($data['recipients']) ?: null,
+            'weekly_email_cc'         => $clean($data['cc']) ?: null,
+            'weekly_email_bcc'        => $clean($data['bcc']) ?: null,
+            'weekly_email_subject'    => $data['subject'] ?? null,
+            'weekly_email_time'       => $data['send_time'] ?? '13:35',
+            'weekly_email_day'        => $data['send_day'] ?? 5,
+        ]);
+
+        return redirect()->back()->with('success', 'Weekly email settings saved.');
+    }
+
+    public function sendWeeklyScheduleEmail(Request $request, Child $child)
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+
+        $startDate = $request->input('date', now()->timezone('Asia/Kolkata')->toDateString());
+        $endDate   = \Carbon\Carbon::parse($startDate)->addDays(6)->toDateString();
+
+        $recipients = $child->weekly_email_recipients ?? [];
+        if (empty($recipients)) {
+            return redirect()->back()->withErrors(['email' => 'No weekly email recipients configured.']);
+        }
+
+        $cmd = new \App\Console\Commands\SendWeeklyScheduleEmails();
+        [$staffSummary, $dailyBreakdown] = $cmd->buildWeekData($child->id, $startDate, $endDate);
+
+        $cc  = array_filter($child->weekly_email_cc  ?? []);
+        $bcc = array_filter($child->weekly_email_bcc ?? []);
+        $mailer = \Mail::to($recipients);
+        if (!empty($cc))  $mailer = $mailer->cc($cc);
+        if (!empty($bcc)) $mailer = $mailer->bcc($bcc);
+        $mailer->send(new \App\Mail\WeeklyScheduleMail($child, $staffSummary, $dailyBreakdown, $startDate, $endDate));
+
+        return redirect()->back()->with('success', 'Weekly email sent to ' . count($recipients) . ' recipient(s).');
+    }
+
+    public function previewWeeklyScheduleEmail(Request $request, Child $child)
+    {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+
+        $startDate = $request->input('date', now()->timezone('Asia/Kolkata')->toDateString());
+        $endDate   = \Carbon\Carbon::parse($startDate)->addDays(6)->toDateString();
+
+        $cmd = new \App\Console\Commands\SendWeeklyScheduleEmails();
+        [$staffSummary, $dailyBreakdown] = $cmd->buildWeekData($child->id, $startDate, $endDate);
+
+        $html = view('emails.weekly_schedule', [
+            'child'          => $child,
+            'staffSummary'   => $staffSummary,
+            'dailyBreakdown' => $dailyBreakdown,
+            'startDate'      => $startDate,
+            'endDate'        => $endDate,
+        ])->render();
+
+        return response()->json(['html' => $html]);
+    }
+
+    private function fmt12(string $time): string
+    {
+        [$h, $m] = array_map('intval', explode(':', $time));
+        $p   = $h < 12 ? 'am' : 'pm';
+        $h12 = $h === 0 ? 12 : ($h > 12 ? $h - 12 : $h);
+        return sprintf('%d:%02d %s', $h12, $m, $p);
     }
 }

@@ -12,12 +12,22 @@ use App\Models\ChildAriyaItem;
 use App\Models\ChildMedSlot;
 use App\Models\ChildTeamItem;
 use App\Models\ChildPageHeader;
+use App\Models\AriyaTeamSchedule;
 
 class Child extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'photo', 'emergency_title', 'mandatory_title', 'team_title', 'face_sheet_pdf'];
+    protected $fillable = ['name', 'photo', 'emergency_title', 'mandatory_title', 'team_title', 'face_sheet_pdf', 'ariya_team_calendar_url', 'schedule_email_recipients', 'schedule_email_cc', 'schedule_email_bcc', 'schedule_email_time', 'schedule_email_subject', 'weekly_email_recipients', 'weekly_email_cc', 'weekly_email_bcc', 'weekly_email_time', 'weekly_email_subject', 'weekly_email_day'];
+
+    protected $casts = [
+        'schedule_email_recipients' => 'array',
+        'schedule_email_cc'         => 'array',
+        'schedule_email_bcc'        => 'array',
+        'weekly_email_recipients'   => 'array',
+        'weekly_email_cc'           => 'array',
+        'weekly_email_bcc'          => 'array',
+    ];
 
     public function users()
     {
@@ -63,5 +73,10 @@ class Child extends Model
     public function pageHeaders()
     {
         return $this->hasMany(ChildPageHeader::class);
+    }
+
+    public function teamSchedules()
+    {
+        return $this->hasMany(AriyaTeamSchedule::class);
     }
 }

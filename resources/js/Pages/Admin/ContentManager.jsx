@@ -1,10 +1,10 @@
-import { Head, router, useForm } from '@inertiajs/react';
-import { useMemo, useState, useRef, useEffect } from 'react';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
+import { Head, router } from '@inertiajs/react';
+import { useState, useEffect, useRef } from 'react';
 import PrimaryButton from '@/Components/PrimaryButton';
 import TextInput from '@/Components/TextInput';
-import InputError from '@/Components/InputError';
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 
+/* ── Constants ── */
 
 const ALL_MENU_ITEMS = [
     { image: 'emg.png',        label: 'Emergency' },
@@ -26,7 +26,137 @@ const CONTENT_TYPES = [
     { value: 'pdf',   label: 'PDF' },
 ];
 
-/* ── Top-level form components so React never remounts them on re-render ── */
+const EMERGENCY_CONTENT_TYPES = [
+    { value: 'text',  label: 'Text' },
+    { value: 'image', label: 'Image' },
+    { value: 'pdf',   label: 'PDF' },
+    { value: 'video', label: 'Video URL' },
+    { value: 'link',  label: 'Link URL' },
+];
+
+const TEAM_CONTENT_TYPES = [
+    { value: 'text',  label: 'Text' },
+    { value: 'image', label: 'Image' },
+    { value: 'pdf',   label: 'PDF' },
+    { value: 'video', label: 'Video URL' },
+    { value: 'link',  label: 'Link URL' },
+    { value: 'quiz',  label: 'Quiz' },
+    { value: 'map',   label: 'Map to Menu' },
+];
+
+const SCHED_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const SCHED_DAY_HDR = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const WEEK_DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const TEAM_GREEN = '#1a9e6b';
+
+const PAGE_HEADER_SLOTS = [
+    { key: 'emergency',       label: 'Emergency' },
+    { key: 'mandatory-tasks', label: 'Mandatory Tasks' },
+    { key: 'medication',      label: 'Medication' },
+    { key: 'team-training',   label: 'Team Training' },
+    { key: 'ariya-status',    label: 'Ariya Tube' },
+    { key: 'ariya-behavior',  label: 'Ariya Art' },
+];
+
+const SECTIONS = [
+    { key: 'dashboard-menu',  label: 'Dashboard Menu',  image: null },
+    { key: 'emergency',       label: 'Emergency',        image: 'emg.png' },
+    { key: 'mandatory-tasks', label: 'Mandatory Tasks',  image: 'mt-m.png' },
+    { key: 'face-sheet',      label: 'Face Sheet',       image: 'f-c.png' },
+    { key: 'ariya-tube',      label: 'Ariya Tube',       image: 'at.png' },
+    { key: 'ariya-art',       label: 'Ariya Art',        image: 'arts.png' },
+    { key: 'sleep',           label: 'Sleep',            image: 'sleep.png' },
+    { key: 'team-training',   label: 'Team Training',    image: 't.png' },
+    { key: 'ariya-team',      label: 'Ariya Team',       image: 'ariya-team.png' },
+    { key: 'medication',      label: 'Medication',       image: 'm.png' },
+    { key: 'page-headers',    label: 'Page Headers',     image: null },
+];
+
+/* ── Helpers ── */
+
+function normalizePhoto(photo) {
+    if (!photo) return null;
+    if (/^https?:\/\//.test(photo)) return photo;
+    if (photo.startsWith('/storage/')) return photo;
+    if (photo.startsWith('storage/')) return '/' + photo;
+    if (photo.startsWith('/')) return '/storage' + photo;
+    return '/storage/' + photo;
+}
+
+function fmt12(t) {
+    const [h, m] = t.split(':').map(Number);
+    const p = h < 12 ? 'am' : 'pm';
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${h12}:${m.toString().padStart(2, '0')} ${p}`;
+}
+
+function calcDur(s, e) {
+    const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    let diff = toMin(e) - toMin(s);
+    if (diff < 0) diff += 1440;
+    const h = Math.floor(diff / 60), m = diff % 60;
+    return m === 0 ? `${h} hrs` : `${h} hrs ${m} mins`;
+}
+
+function getDayAbbr(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    return WEEK_DAY_ABBR[d.getDay()];
+}
+
+/* ── Quiz Editor ── */
+
+function QuizEditor({ value, onChange }) {
+    const parse = (v) => {
+        try { const q = JSON.parse(v); return Array.isArray(q) ? q : []; } catch { return []; }
+    };
+    const [questions, setQuestions] = useState(() => parse(value));
+    const update = (qs) => { setQuestions(qs); onChange(JSON.stringify(qs)); };
+    const addQ = () => update([...questions, { question: '', options: ['', ''], correct: 0 }]);
+    const removeQ = (i) => update(questions.filter((_, idx) => idx !== i));
+    const updateQ = (i, field, val) => update(questions.map((q, idx) => idx === i ? { ...q, [field]: val } : q));
+    const addOption = (i) => update(questions.map((q, idx) => idx === i ? { ...q, options: [...q.options, ''] } : q));
+    const removeOption = (qi, oi) => update(questions.map((q, idx) => {
+        if (idx !== qi) return q;
+        const opts = q.options.filter((_, i) => i !== oi);
+        return { ...q, options: opts, correct: Math.min(q.correct, opts.length - 1) };
+    }));
+    const updateOption = (qi, oi, val) => update(questions.map((q, idx) => {
+        if (idx !== qi) return q;
+        return { ...q, options: q.options.map((o, i) => i === oi ? val : o) };
+    }));
+    return (
+        <div className="space-y-2">
+            {questions.map((q, qi) => (
+                <div key={qi} className="rounded border border-blue-200 bg-white p-2.5 space-y-2">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-blue-600 shrink-0">Q{qi + 1}</span>
+                        <input className="flex-1 rounded border-gray-300 text-sm shadow-sm" value={q.question} onChange={(e) => updateQ(qi, 'question', e.target.value)} placeholder="Question text" />
+                        <button type="button" onClick={() => removeQ(qi)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
+                    </div>
+                    <div className="space-y-1 pl-5">
+                        {q.options.map((opt, oi) => (
+                            <div key={oi} className="flex items-center gap-2">
+                                <input type="radio" name={`correct_${qi}`} checked={q.correct === oi} onChange={() => updateQ(qi, 'correct', oi)} title="Mark correct" className="accent-green-500" />
+                                <input className="flex-1 rounded border-gray-300 text-xs shadow-sm" value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Option ${oi + 1}`} />
+                                {q.options.length > 2 && (
+                                    <button type="button" onClick={() => removeOption(qi, oi)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                                )}
+                            </div>
+                        ))}
+                        <button type="button" onClick={() => addOption(qi)} className="text-xs text-blue-500 hover:text-blue-700">+ Add option</button>
+                    </div>
+                </div>
+            ))}
+            <button type="button" onClick={addQ} className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700">
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                Add Question
+            </button>
+        </div>
+    );
+}
+
+/* ── Menu Item Form ── */
 
 function MenuItemForm({ f, setF, onSubmit, onCancel, submitLabel }) {
     const needsFile = (type) => type === 'image' || type === 'pdf';
@@ -82,159 +212,14 @@ function MenuItemForm({ f, setF, onSubmit, onCancel, submitLabel }) {
     );
 }
 
-const EMERGENCY_CONTENT_TYPES = [
-    { value: 'text',  label: 'Text' },
-    { value: 'image', label: 'Image' },
-    { value: 'pdf',   label: 'PDF' },
-    { value: 'video', label: 'Video URL' },
-    { value: 'link',  label: 'Link URL' },
-];
-
-const TEAM_CONTENT_TYPES = [
-    { value: 'text',  label: 'Text' },
-    { value: 'image', label: 'Image' },
-    { value: 'pdf',   label: 'PDF' },
-    { value: 'video', label: 'Video URL' },
-    { value: 'link',  label: 'Link URL' },
-    { value: 'quiz',  label: 'Quiz' },
-    { value: 'map',   label: 'Map to Menu' },
-];
-
-function QuizEditor({ value, onChange }) {
-    const parse = (v) => {
-        try { const q = JSON.parse(v); return Array.isArray(q) ? q : []; } catch { return []; }
-    };
-    const [questions, setQuestions] = useState(() => parse(value));
-
-    const update = (qs) => { setQuestions(qs); onChange(JSON.stringify(qs)); };
-    const addQ = () => update([...questions, { question: '', options: ['', ''], correct: 0 }]);
-    const removeQ = (i) => update(questions.filter((_, idx) => idx !== i));
-    const updateQ = (i, field, val) => update(questions.map((q, idx) => idx === i ? { ...q, [field]: val } : q));
-    const addOption = (i) => update(questions.map((q, idx) => idx === i ? { ...q, options: [...q.options, ''] } : q));
-    const removeOption = (qi, oi) => update(questions.map((q, idx) => {
-        if (idx !== qi) return q;
-        const opts = q.options.filter((_, i) => i !== oi);
-        return { ...q, options: opts, correct: Math.min(q.correct, opts.length - 1) };
-    }));
-    const updateOption = (qi, oi, val) => update(questions.map((q, idx) => {
-        if (idx !== qi) return q;
-        return { ...q, options: q.options.map((o, i) => i === oi ? val : o) };
-    }));
-
-    return (
-        <div className="space-y-2">
-            {questions.map((q, qi) => (
-                <div key={qi} className="rounded border border-blue-200 bg-white p-2.5 space-y-2">
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-blue-600 shrink-0">Q{qi + 1}</span>
-                        <input className="flex-1 rounded border-gray-300 text-sm shadow-sm" value={q.question} onChange={(e) => updateQ(qi, 'question', e.target.value)} placeholder="Question text" />
-                        <button type="button" onClick={() => removeQ(qi)} className="text-red-400 hover:text-red-600 text-xs shrink-0">✕</button>
-                    </div>
-                    <div className="space-y-1 pl-5">
-                        {q.options.map((opt, oi) => (
-                            <div key={oi} className="flex items-center gap-2">
-                                <input type="radio" name={`correct_${qi}`} checked={q.correct === oi} onChange={() => updateQ(qi, 'correct', oi)} title="Mark correct" className="accent-green-500" />
-                                <input className="flex-1 rounded border-gray-300 text-xs shadow-sm" value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Option ${oi + 1}`} />
-                                {q.options.length > 2 && (
-                                    <button type="button" onClick={() => removeOption(qi, oi)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
-                                )}
-                            </div>
-                        ))}
-                        <button type="button" onClick={() => addOption(qi)} className="text-xs text-blue-500 hover:text-blue-700">+ Add option</button>
-                    </div>
-                </div>
-            ))}
-            <button type="button" onClick={addQ} className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700">
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                Add Question
-            </button>
-        </div>
-    );
-}
-
-function EmergencyItemForm({ f, setF, onSubmit, onCancel, submitLabel }) {
-    const needsFile = (type) => type === 'image' || type === 'pdf';
-    return (
-        <form onSubmit={onSubmit} className="space-y-3 rounded-lg border border-dashed border-red-200 bg-red-50 p-4">
-            <div className="grid grid-cols-2 gap-3">
-                <div>
-                    <label className="text-xs font-medium text-gray-500">Title *</label>
-                    <TextInput className="w-full mt-0.5" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Popup title" required />
-                </div>
-                <div>
-                    <label className="text-xs font-medium text-gray-500">Icon image {submitLabel === 'Add' ? '*' : '(replace)'}</label>
-                    <input type="file" accept="image/*" className="mt-0.5 block w-full text-xs" onChange={(e) => setF({ ...f, icon: e.target.files[0] })} />
-                </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-                <div>
-                    <label className="text-xs font-medium text-gray-500">Content Type *</label>
-                    <select className="w-full mt-0.5 rounded-md border-gray-300 text-sm shadow-sm" value={f.content_type} onChange={(e) => setF({ ...f, content_type: e.target.value })}>
-                        {EMERGENCY_CONTENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    </select>
-                </div>
-                <div>
-                    {needsFile(f.content_type) ? (
-                        <>
-                            <label className="text-xs font-medium text-gray-500">Upload {f.content_type === 'pdf' ? 'PDF' : 'Image'}</label>
-                            <input type="file" accept={f.content_type === 'pdf' ? '.pdf' : 'image/*'} className="mt-0.5 block w-full text-xs" onChange={(e) => setF({ ...f, content_file: e.target.files[0] })} />
-                        </>
-                    ) : f.content_type === 'text' ? (
-                        <div className="opacity-0 pointer-events-none" />
-                    ) : (
-                        <>
-                            <label className="text-xs font-medium text-gray-500">{f.content_type === 'video' ? 'Video URL' : 'Link URL'}</label>
-                            <TextInput className="w-full mt-0.5" value={f.content_url} onChange={(e) => setF({ ...f, content_url: e.target.value })} placeholder="https://..." />
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {f.content_type === 'text' && (
-                <div>
-                    <label className="text-xs font-medium text-gray-500">Text Content</label>
-                    <textarea
-                        className="w-full mt-0.5 rounded-md border-gray-300 shadow-sm text-sm"
-                        rows={3}
-                        value={f.content}
-                        onChange={(e) => setF({ ...f, content: e.target.value })}
-                        placeholder="Popup content text"
-                    />
-                </div>
-            )}
-
-            <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                    <label className="text-xs font-medium text-gray-500">Sort Order</label>
-                    <input type="number" min="0" className="w-16 rounded border-gray-300 text-center text-sm shadow-sm" value={f.sort_order} onChange={(e) => setF({ ...f, sort_order: parseInt(e.target.value) || 0 })} />
-                </div>
-                <div className="flex items-center gap-2">
-                    <label className="text-xs font-medium text-gray-500">Active</label>
-                    <button type="button" onClick={() => setF({ ...f, is_active: !f.is_active })} className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${f.is_active ? 'bg-red-500' : 'bg-gray-300'}`}>
-                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${f.is_active ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                    </button>
-                </div>
-                <div className="flex-1" />
-                <button type="button" onClick={onCancel} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
-                <PrimaryButton>{submitLabel}</PrimaryButton>
-            </div>
-        </form>
-    );
-}
-
-/* ── Custom menu items (CRUD) ── */
-
 function CustomMenuItems({ child }) {
     const blank = { label: '', content_type: 'link', content_url: '', content_file: null, icon: null, sort_order: 99, is_active: true };
     const [adding, setAdding] = useState(false);
     const [form, setForm] = useState(blank);
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState({});
-
     const customItems = (child.menu_items || []).filter((i) => i.icon_path);
     const needsFile = (type) => type === 'image' || type === 'pdf';
-
     const submit = (e) => {
         e.preventDefault();
         const fd = new FormData();
@@ -245,13 +230,8 @@ function CustomMenuItems({ child }) {
         if (form.icon) fd.append('icon', form.icon);
         if (needsFile(form.content_type) && form.content_file) fd.append('content_file', form.content_file);
         else fd.append('content_url', form.content_url || '');
-        router.post(route('children.menu-items.store', child.id), fd, {
-            preserveScroll: true,
-            forceFormData: true,
-            onSuccess: () => { setAdding(false); setForm(blank); },
-        });
+        router.post(route('children.menu-items.store', child.id), fd, { preserveScroll: true, forceFormData: true, onSuccess: () => { setAdding(false); setForm(blank); } });
     };
-
     const submitEdit = (e) => {
         e.preventDefault();
         const fd = new FormData();
@@ -263,15 +243,9 @@ function CustomMenuItems({ child }) {
         if (editForm.icon) fd.append('icon', editForm.icon);
         if (needsFile(editForm.content_type) && editForm.content_file) fd.append('content_file', editForm.content_file);
         else fd.append('content_url', editForm.content_url || '');
-        router.post(route('children.menu-items.update', { child: child.id, menuItem: editingId }), fd, {
-            preserveScroll: true,
-            forceFormData: true,
-            onSuccess: () => setEditingId(null),
-        });
+        router.post(route('children.menu-items.update', { child: child.id, menuItem: editingId }), fd, { preserveScroll: true, forceFormData: true, onSuccess: () => setEditingId(null) });
     };
-
     const del = (itemId) => router.delete(route('children.menu-items.destroy', { child: child.id, menuItem: itemId }), { preserveScroll: true });
-
     return (
         <div className="space-y-2">
             {customItems.map((item) => (
@@ -304,115 +278,82 @@ function CustomMenuItems({ child }) {
     );
 }
 
-/* ── Emergency page title editor ── */
+/* ── Emergency ── */
+
+function EmergencyItemForm({ f, setF, onSubmit, onCancel, submitLabel }) {
+    const needsFile = (type) => type === 'image' || type === 'pdf';
+    return (
+        <form onSubmit={onSubmit} className="space-y-3 rounded-lg border border-dashed border-red-200 bg-red-50 p-4">
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <label className="text-xs font-medium text-gray-500">Title *</label>
+                    <TextInput className="w-full mt-0.5" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Popup title" required />
+                </div>
+                <div>
+                    <label className="text-xs font-medium text-gray-500">Icon image {submitLabel === 'Add' ? '*' : '(replace)'}</label>
+                    <input type="file" accept="image/*" className="mt-0.5 block w-full text-xs" onChange={(e) => setF({ ...f, icon: e.target.files[0] })} />
+                </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <label className="text-xs font-medium text-gray-500">Content Type *</label>
+                    <select className="w-full mt-0.5 rounded-md border-gray-300 text-sm shadow-sm" value={f.content_type} onChange={(e) => setF({ ...f, content_type: e.target.value })}>
+                        {EMERGENCY_CONTENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                </div>
+                <div>
+                    {needsFile(f.content_type) ? (
+                        <>
+                            <label className="text-xs font-medium text-gray-500">Upload {f.content_type === 'pdf' ? 'PDF' : 'Image'}</label>
+                            <input type="file" accept={f.content_type === 'pdf' ? '.pdf' : 'image/*'} className="mt-0.5 block w-full text-xs" onChange={(e) => setF({ ...f, content_file: e.target.files[0] })} />
+                        </>
+                    ) : f.content_type === 'text' ? (
+                        <div className="opacity-0 pointer-events-none" />
+                    ) : (
+                        <>
+                            <label className="text-xs font-medium text-gray-500">{f.content_type === 'video' ? 'Video URL' : 'Link URL'}</label>
+                            <TextInput className="w-full mt-0.5" value={f.content_url} onChange={(e) => setF({ ...f, content_url: e.target.value })} placeholder="https://..." />
+                        </>
+                    )}
+                </div>
+            </div>
+            {f.content_type === 'text' && (
+                <div>
+                    <label className="text-xs font-medium text-gray-500">Text Content</label>
+                    <textarea className="w-full mt-0.5 rounded-md border-gray-300 shadow-sm text-sm" rows={3} value={f.content} onChange={(e) => setF({ ...f, content: e.target.value })} placeholder="Popup content text" />
+                </div>
+            )}
+            <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                    <label className="text-xs font-medium text-gray-500">Sort Order</label>
+                    <input type="number" min="0" className="w-16 rounded border-gray-300 text-center text-sm shadow-sm" value={f.sort_order} onChange={(e) => setF({ ...f, sort_order: parseInt(e.target.value) || 0 })} />
+                </div>
+                <div className="flex items-center gap-2">
+                    <label className="text-xs font-medium text-gray-500">Active</label>
+                    <button type="button" onClick={() => setF({ ...f, is_active: !f.is_active })} className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${f.is_active ? 'bg-red-500' : 'bg-gray-300'}`}>
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${f.is_active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                    </button>
+                </div>
+                <div className="flex-1" />
+                <button type="button" onClick={onCancel} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+                <PrimaryButton>{submitLabel}</PrimaryButton>
+            </div>
+        </form>
+    );
+}
 
 function EmergencyTitleEditor({ child }) {
     const [title, setTitle] = useState(child.emergency_title || 'Emergency');
-
-    const save = () => {
-        router.post(route('children.emergency-title', child.id), { emergency_title: title }, { preserveScroll: true });
-    };
-
+    useEffect(() => setTitle(child.emergency_title || 'Emergency'), [child]);
+    const save = () => router.post(route('children.emergency-title', child.id), { emergency_title: title }, { preserveScroll: true });
     return (
         <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-gray-600 shrink-0">Page Title</label>
-            <TextInput
-                className="flex-1"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Emergency"
-            />
+            <TextInput className="flex-1" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Emergency" />
             <PrimaryButton onClick={save}>Save</PrimaryButton>
         </div>
     );
 }
-
-/* ── Face sheet PDF manager ── */
-
-function FaceSheetManager({ child }) {
-    const [file, setFile] = useState(null);
-    const inputRef = useRef(null);
-
-    const hasPdf = !!child.face_sheet_pdf;
-
-    const upload = () => {
-        if (!file) return;
-        const fd = new FormData();
-        fd.append('pdf', file);
-        router.post(route('children.face-sheet', child.id), fd, {
-            forceFormData: true,
-            preserveScroll: true,
-            onSuccess: () => { setFile(null); if (inputRef.current) inputRef.current.value = ''; },
-        });
-    };
-
-    const remove = () => {
-        if (!confirm('Remove the current face sheet PDF?')) return;
-        router.delete(route('children.face-sheet.destroy', child.id), { preserveScroll: true });
-    };
-
-    return (
-        <div className="space-y-4">
-            {hasPdf && (
-                <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-                    <svg className="h-5 w-5 text-green-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-green-800">PDF uploaded</p>
-                        <a
-                            href={`/storage/${child.face_sheet_pdf}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-green-600 hover:underline truncate block"
-                        >
-                            View current PDF
-                        </a>
-                    </div>
-                    <button onClick={remove} className="text-xs text-red-500 hover:text-red-700 font-medium shrink-0">Remove</button>
-                </div>
-            )}
-
-            <div className="flex items-center gap-3">
-                <input
-                    ref={inputRef}
-                    type="file"
-                    accept=".pdf"
-                    className="flex-1 text-sm text-gray-600 file:mr-3 file:rounded file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-indigo-700 hover:file:bg-indigo-100"
-                    onChange={(e) => setFile(e.target.files[0] || null)}
-                />
-                <PrimaryButton onClick={upload} disabled={!file}>
-                    {hasPdf ? 'Replace' : 'Upload'}
-                </PrimaryButton>
-            </div>
-        </div>
-    );
-}
-
-/* ── Mandatory Tasks page title editor ── */
-
-function MandatoryTitleEditor({ child }) {
-    const [title, setTitle] = useState(child.mandatory_title || 'Mandatory Tasks');
-
-    const save = () => {
-        router.post(route('children.mandatory-title', child.id), { mandatory_title: title }, { preserveScroll: true });
-    };
-
-    return (
-        <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-gray-600 shrink-0">Page Title</label>
-            <TextInput
-                className="flex-1"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Mandatory Tasks"
-            />
-            <PrimaryButton onClick={save}>Save</PrimaryButton>
-        </div>
-    );
-}
-
-/* ── Custom emergency items (CRUD) ── */
 
 function CustomEmergencyItems({ child }) {
     const blank = { title: '', content: '', content_type: 'text', content_url: '', content_file: null, icon: null, sort_order: 99, is_active: true };
@@ -420,10 +361,8 @@ function CustomEmergencyItems({ child }) {
     const [form, setForm] = useState(blank);
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState({});
-
     const customItems = (child.emergency_items || []).filter((i) => i.icon_path);
     const needsFile = (type) => type === 'image' || type === 'pdf';
-
     const buildFd = (f) => {
         const fd = new FormData();
         fd.append('title', f.title);
@@ -436,27 +375,15 @@ function CustomEmergencyItems({ child }) {
         else fd.append('content_url', f.content_url || '');
         return fd;
     };
-
     const submit = (e) => {
         e.preventDefault();
-        router.post(route('children.emergency-items.store', child.id), buildFd(form), {
-            preserveScroll: true,
-            forceFormData: true,
-            onSuccess: () => { setAdding(false); setForm(blank); },
-        });
+        router.post(route('children.emergency-items.store', child.id), buildFd(form), { preserveScroll: true, forceFormData: true, onSuccess: () => { setAdding(false); setForm(blank); } });
     };
-
     const submitEdit = (e) => {
         e.preventDefault();
-        router.post(route('children.emergency-items.update', { child: child.id, emergencyItem: editingId }), buildFd(editForm), {
-            preserveScroll: true,
-            forceFormData: true,
-            onSuccess: () => setEditingId(null),
-        });
+        router.post(route('children.emergency-items.update', { child: child.id, emergencyItem: editingId }), buildFd(editForm), { preserveScroll: true, forceFormData: true, onSuccess: () => setEditingId(null) });
     };
-
     const del = (itemId) => router.delete(route('children.emergency-items.destroy', { child: child.id, emergencyItem: itemId }), { preserveScroll: true });
-
     return (
         <div className="space-y-2">
             {customItems.map((item) => (
@@ -485,7 +412,20 @@ function CustomEmergencyItems({ child }) {
     );
 }
 
-/* ── Mandatory task image manager ── */
+/* ── Mandatory Tasks ── */
+
+function MandatoryTitleEditor({ child }) {
+    const [title, setTitle] = useState(child.mandatory_title || 'Mandatory Tasks');
+    useEffect(() => setTitle(child.mandatory_title || 'Mandatory Tasks'), [child]);
+    const save = () => router.post(route('children.mandatory-title', child.id), { mandatory_title: title }, { preserveScroll: true });
+    return (
+        <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-600 shrink-0">Page Title</label>
+            <TextInput className="flex-1" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mandatory Tasks" />
+            <PrimaryButton onClick={save}>Save</PrimaryButton>
+        </div>
+    );
+}
 
 function MandatoryItemForm({ f, setF, onSubmit, onCancel, submitLabel }) {
     return (
@@ -525,9 +465,7 @@ function MandatoryItemsManager({ child }) {
     const [form, setForm] = useState(blank);
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState({});
-
     const items = (child.mandatory_items || []);
-
     const buildFd = (f) => {
         const fd = new FormData();
         if (f.image) fd.append('image', f.image);
@@ -536,27 +474,15 @@ function MandatoryItemsManager({ child }) {
         fd.append('is_active', f.is_active ? '1' : '0');
         return fd;
     };
-
     const submit = (e) => {
         e.preventDefault();
-        router.post(route('children.mandatory-items.store', child.id), buildFd(form), {
-            preserveScroll: true,
-            forceFormData: true,
-            onSuccess: () => { setAdding(false); setForm(blank); },
-        });
+        router.post(route('children.mandatory-items.store', child.id), buildFd(form), { preserveScroll: true, forceFormData: true, onSuccess: () => { setAdding(false); setForm(blank); } });
     };
-
     const submitEdit = (e) => {
         e.preventDefault();
-        router.post(route('children.mandatory-items.update', { child: child.id, mandatoryItem: editingId }), buildFd(editForm), {
-            preserveScroll: true,
-            forceFormData: true,
-            onSuccess: () => setEditingId(null),
-        });
+        router.post(route('children.mandatory-items.update', { child: child.id, mandatoryItem: editingId }), buildFd(editForm), { preserveScroll: true, forceFormData: true, onSuccess: () => setEditingId(null) });
     };
-
     const del = (id) => router.delete(route('children.mandatory-items.destroy', { child: child.id, mandatoryItem: id }), { preserveScroll: true });
-
     return (
         <div className="space-y-3">
             {items.length > 0 && (
@@ -569,9 +495,7 @@ function MandatoryItemsManager({ child }) {
                         ) : (
                             <div key={item.id} className={`relative rounded-lg overflow-hidden border-2 ${item.is_active ? 'border-indigo-300' : 'border-gray-200 opacity-50'}`}>
                                 <img src={`/storage/${item.image}`} alt={item.title || ''} className="w-full h-28 object-cover" />
-                                {item.title && (
-                                    <div className="px-2 py-1 bg-white text-xs text-gray-600 truncate">{item.title}</div>
-                                )}
+                                {item.title && <div className="px-2 py-1 bg-white text-xs text-gray-600 truncate">{item.title}</div>}
                                 <div className="absolute top-1 right-1 flex gap-1">
                                     <button type="button" onClick={() => { setEditingId(item.id); setEditForm({ image: null, title: item.title || '', sort_order: item.sort_order, is_active: item.is_active }); }} className="rounded bg-white/90 px-1.5 py-0.5 text-xs text-indigo-600 shadow hover:bg-white">Edit</button>
                                     <button type="button" onClick={() => del(item.id)} className="rounded bg-white/90 px-1.5 py-0.5 text-xs text-red-500 shadow hover:bg-white">Del</button>
@@ -582,7 +506,6 @@ function MandatoryItemsManager({ child }) {
                     ))}
                 </div>
             )}
-
             {adding ? (
                 <MandatoryItemForm f={form} setF={setForm} onSubmit={submit} onCancel={() => setAdding(false)} submitLabel="Add" />
             ) : (
@@ -595,28 +518,60 @@ function MandatoryItemsManager({ child }) {
     );
 }
 
-/* ── Ariya items manager (nested: icon grid → image gallery) ── */
+/* ── Face Sheet ── */
+
+function FaceSheetManager({ child }) {
+    const [file, setFile] = useState(null);
+    const inputRef = useRef(null);
+    const hasPdf = !!child.face_sheet_pdf;
+    const upload = () => {
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('pdf', file);
+        router.post(route('children.face-sheet', child.id), fd, { forceFormData: true, preserveScroll: true, onSuccess: () => { setFile(null); if (inputRef.current) inputRef.current.value = ''; } });
+    };
+    const remove = () => {
+        if (!confirm('Remove the current face sheet PDF?')) return;
+        router.delete(route('children.face-sheet.destroy', child.id), { preserveScroll: true });
+    };
+    return (
+        <div className="space-y-4">
+            {hasPdf && (
+                <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                    <svg className="h-5 w-5 text-green-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-green-800">PDF uploaded</p>
+                        <a href={`/storage/${child.face_sheet_pdf}`} target="_blank" rel="noopener noreferrer" className="text-xs text-green-600 hover:underline truncate block">View current PDF</a>
+                    </div>
+                    <button onClick={remove} className="text-xs text-red-500 hover:text-red-700 font-medium shrink-0">Remove</button>
+                </div>
+            )}
+            <div className="flex items-center gap-3">
+                <input ref={inputRef} type="file" accept=".pdf" className="flex-1 text-sm text-gray-600 file:mr-3 file:rounded file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-indigo-700 hover:file:bg-indigo-100" onChange={(e) => setFile(e.target.files[0] || null)} />
+                <PrimaryButton onClick={upload} disabled={!file}>{hasPdf ? 'Replace' : 'Upload'}</PrimaryButton>
+            </div>
+        </div>
+    );
+}
+
+/* ── Ariya Items ── */
 
 function AriyaImageRow({ childId, item }) {
-    const [mode, setMode] = useState(null); // null | 'image' | 'video'
+    const [mode, setMode] = useState(null);
     const [imgFile, setImgFile] = useState(null);
     const [caption, setCaption] = useState('');
     const [videoUrl, setVideoUrl] = useState('');
-
     const del = (imgId) => router.delete(route('children.ariya-images.destroy', { child: childId, ariyaItem: item.id, ariyaImage: imgId }), { preserveScroll: true });
-
     const submit = (e) => {
         e.preventDefault();
         const fd = new FormData();
         if (mode === 'image' && imgFile) fd.append('image', imgFile);
         if (mode === 'video') fd.append('video_url', videoUrl);
         fd.append('caption', caption);
-        router.post(route('children.ariya-images.store', { child: childId, ariyaItem: item.id }), fd, {
-            forceFormData: true, preserveScroll: true,
-            onSuccess: () => { setMode(null); setImgFile(null); setCaption(''); setVideoUrl(''); },
-        });
+        router.post(route('children.ariya-images.store', { child: childId, ariyaItem: item.id }), fd, { forceFormData: true, preserveScroll: true, onSuccess: () => { setMode(null); setImgFile(null); setCaption(''); setVideoUrl(''); } });
     };
-
     return (
         <div className="mt-2 rounded-lg bg-gray-50 border border-gray-200 p-3 space-y-2">
             {(item.images || []).length > 0 && (
@@ -635,7 +590,6 @@ function AriyaImageRow({ childId, item }) {
                     ))}
                 </div>
             )}
-
             {mode ? (
                 <form onSubmit={submit} className="space-y-2">
                     {mode === 'image' ? (
@@ -705,9 +659,7 @@ function AriyaItemsManager({ child, type }) {
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState({});
     const [expandedId, setExpandedId] = useState(null);
-
     const items = (child.ariya_items || []).filter((i) => i.type === type);
-
     const buildFd = (f) => {
         const fd = new FormData();
         fd.append('title', f.title);
@@ -716,25 +668,15 @@ function AriyaItemsManager({ child, type }) {
         fd.append('is_active', f.is_active ? '1' : '0');
         return fd;
     };
-
     const submit = (e) => {
         e.preventDefault();
-        router.post(route('children.ariya-items.store', { child: child.id, type }), buildFd(form), {
-            forceFormData: true, preserveScroll: true,
-            onSuccess: () => { setAdding(false); setForm(blank); },
-        });
+        router.post(route('children.ariya-items.store', { child: child.id, type }), buildFd(form), { forceFormData: true, preserveScroll: true, onSuccess: () => { setAdding(false); setForm(blank); } });
     };
-
     const submitEdit = (e) => {
         e.preventDefault();
-        router.post(route('children.ariya-items.update', { child: child.id, ariyaItem: editingId }), buildFd(editForm), {
-            forceFormData: true, preserveScroll: true,
-            onSuccess: () => setEditingId(null),
-        });
+        router.post(route('children.ariya-items.update', { child: child.id, ariyaItem: editingId }), buildFd(editForm), { forceFormData: true, preserveScroll: true, onSuccess: () => setEditingId(null) });
     };
-
     const del = (id) => router.delete(route('children.ariya-items.destroy', { child: child.id, ariyaItem: id }), { preserveScroll: true });
-
     return (
         <div className="space-y-3">
             {items.map((item) => (
@@ -753,12 +695,9 @@ function AriyaItemsManager({ child, type }) {
                             <button type="button" onClick={() => del(item.id)} className="text-xs text-red-500 hover:text-red-700">Del</button>
                         </div>
                     )}
-                    {expandedId === item.id && editingId !== item.id && (
-                        <AriyaImageRow childId={child.id} item={item} />
-                    )}
+                    {expandedId === item.id && editingId !== item.id && <AriyaImageRow childId={child.id} item={item} />}
                 </div>
             ))}
-
             {adding ? (
                 <AriyaItemForm f={form} setF={setForm} onSubmit={submit} onCancel={() => setAdding(false)} submitLabel="Add Item" />
             ) : (
@@ -771,30 +710,21 @@ function AriyaItemsManager({ child, type }) {
     );
 }
 
-/* ── Ariya Art direct gallery manager ── */
-
 function AriyaArtManager({ child }) {
     const [file, setFile] = useState(null);
     const [caption, setCaption] = useState('');
     const inputRef = useRef(null);
-
     const section = 'ariya-art';
     const items = (child.gallery_items || []).filter((i) => i.section === section);
-
     const submit = (e) => {
         e.preventDefault();
         if (!file) return;
         const fd = new FormData();
         fd.append('image', file);
         fd.append('title', caption);
-        router.post(route('children.gallery.store', { child: child.id, section }), fd, {
-            forceFormData: true, preserveScroll: true,
-            onSuccess: () => { setFile(null); setCaption(''); if (inputRef.current) inputRef.current.value = ''; },
-        });
+        router.post(route('children.gallery.store', { child: child.id, section }), fd, { forceFormData: true, preserveScroll: true, onSuccess: () => { setFile(null); setCaption(''); if (inputRef.current) inputRef.current.value = ''; } });
     };
-
     const del = (id) => router.delete(route('children.gallery.destroy', { child: child.id, section, galleryItem: id }), { preserveScroll: true });
-
     return (
         <div className="space-y-4">
             {items.length > 0 && (
@@ -817,10 +747,11 @@ function AriyaArtManager({ child }) {
     );
 }
 
-/* ── Team Training manager ── */
+/* ── Team Training ── */
 
 function TeamTitleEditor({ child }) {
     const [title, setTitle] = useState(child.team_title || 'Team Training');
+    useEffect(() => setTitle(child.team_title || 'Team Training'), [child]);
     const save = () => router.post(route('children.team-title', child.id), { team_title: title }, { preserveScroll: true });
     return (
         <div className="flex items-center gap-3">
@@ -875,9 +806,7 @@ function TeamItemForm({ f, setF, onSubmit, onCancel, submitLabel, teamItems = []
                             <label className="text-xs font-medium text-gray-500">Map to Menu *</label>
                             <select className="w-full mt-0.5 rounded-md border-gray-300 text-sm shadow-sm" value={f.content_url} onChange={(e) => setF({ ...f, content_url: e.target.value })} required>
                                 <option value="">— select menu —</option>
-                                {teamItems.map((ti) => (
-                                    <option key={ti.id} value={ti.id}>{ti.title}</option>
-                                ))}
+                                {teamItems.map((ti) => <option key={ti.id} value={ti.id}>{ti.title}</option>)}
                             </select>
                         </>
                     ) : (
@@ -925,10 +854,8 @@ function TeamSubItemsManager({ child, teamItem }) {
     const [form, setForm] = useState(blank);
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState({});
-
     const subItems = teamItem.sub_items || [];
     const needsFile = (type) => type === 'image' || type === 'pdf';
-
     const buildFd = (f) => {
         const fd = new FormData();
         fd.append('title', f.title);
@@ -942,25 +869,15 @@ function TeamSubItemsManager({ child, teamItem }) {
         else fd.append('content_url', f.content_url || '');
         return fd;
     };
-
     const submit = (e) => {
         e.preventDefault();
-        router.post(route('children.team-sub-items.store', { child: child.id, teamItem: teamItem.id }), buildFd(form), {
-            preserveScroll: true, forceFormData: true,
-            onSuccess: () => { setAdding(false); setForm(blank); },
-        });
+        router.post(route('children.team-sub-items.store', { child: child.id, teamItem: teamItem.id }), buildFd(form), { preserveScroll: true, forceFormData: true, onSuccess: () => { setAdding(false); setForm(blank); } });
     };
-
     const submitEdit = (e) => {
         e.preventDefault();
-        router.post(route('children.team-sub-items.update', { child: child.id, teamItem: teamItem.id, subItem: editingId }), buildFd(editForm), {
-            preserveScroll: true, forceFormData: true,
-            onSuccess: () => setEditingId(null),
-        });
+        router.post(route('children.team-sub-items.update', { child: child.id, teamItem: teamItem.id, subItem: editingId }), buildFd(editForm), { preserveScroll: true, forceFormData: true, onSuccess: () => setEditingId(null) });
     };
-
     const del = (subId) => router.delete(route('children.team-sub-items.destroy', { child: child.id, teamItem: teamItem.id, subItem: subId }), { preserveScroll: true });
-
     return (
         <div className="pl-4 border-l-2 border-blue-200 space-y-2 mt-2">
             {subItems.map((sub) => (
@@ -968,10 +885,7 @@ function TeamSubItemsManager({ child, teamItem }) {
                     <TeamItemForm key={sub.id} f={editForm} setF={setEditForm} onSubmit={submitEdit} onCancel={() => setEditingId(null)} submitLabel="Update" teamItems={child.team_items || []} />
                 ) : (
                     <div key={sub.id} className={`flex items-center gap-3 rounded-lg border p-2 ${sub.is_active ? 'border-blue-100 bg-white' : 'border-gray-200 bg-gray-50'}`}>
-                        {sub.icon_path
-                            ? <img src={`/storage/${sub.icon_path}`} className="h-7 w-7 rounded object-contain" />
-                            : <div className="h-7 w-7 rounded bg-gray-200 flex items-center justify-center text-xs text-gray-400">?</div>
-                        }
+                        {sub.icon_path ? <img src={`/storage/${sub.icon_path}`} className="h-7 w-7 rounded object-contain" /> : <div className="h-7 w-7 rounded bg-gray-200 flex items-center justify-center text-xs text-gray-400">?</div>}
                         <span className="flex-1 text-xs font-medium text-gray-700">{sub.title}</span>
                         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">{sub.content_type}</span>
                         <button type="button" onClick={() => { setEditingId(sub.id); setEditForm({ title: sub.title, content: sub.content || '', content_type: sub.content_type || 'text', content_url: sub.content_value || '', content_file: null, icon: null, header_image: null, existing_header: sub.header_image || null, sort_order: sub.sort_order, is_active: sub.is_active }); }} className="text-xs text-indigo-600 hover:underline">Edit</button>
@@ -998,10 +912,8 @@ function CustomTeamItems({ child }) {
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState({});
     const [expandedId, setExpandedId] = useState(null);
-
     const items = (child.team_items || []);
     const needsFile = (type) => type === 'image' || type === 'pdf';
-
     const buildFd = (f) => {
         const fd = new FormData();
         fd.append('title', f.title);
@@ -1015,25 +927,15 @@ function CustomTeamItems({ child }) {
         else fd.append('content_url', f.content_url || '');
         return fd;
     };
-
     const submit = (e) => {
         e.preventDefault();
-        router.post(route('children.team-items.store', child.id), buildFd(form), {
-            preserveScroll: true, forceFormData: true,
-            onSuccess: () => { setAdding(false); setForm(blank); },
-        });
+        router.post(route('children.team-items.store', child.id), buildFd(form), { preserveScroll: true, forceFormData: true, onSuccess: () => { setAdding(false); setForm(blank); } });
     };
-
     const submitEdit = (e) => {
         e.preventDefault();
-        router.post(route('children.team-items.update', { child: child.id, teamItem: editingId }), buildFd(editForm), {
-            preserveScroll: true, forceFormData: true,
-            onSuccess: () => setEditingId(null),
-        });
+        router.post(route('children.team-items.update', { child: child.id, teamItem: editingId }), buildFd(editForm), { preserveScroll: true, forceFormData: true, onSuccess: () => setEditingId(null) });
     };
-
     const del = (id) => router.delete(route('children.team-items.destroy', { child: child.id, teamItem: id }), { preserveScroll: true });
-
     return (
         <div className="space-y-3">
             {items.map((item) => (
@@ -1042,10 +944,7 @@ function CustomTeamItems({ child }) {
                         <TeamItemForm f={editForm} setF={setEditForm} onSubmit={submitEdit} onCancel={() => setEditingId(null)} submitLabel="Update" teamItems={items.filter(i => i.id !== editingId)} />
                     ) : (
                         <div className={`flex items-center gap-3 rounded-lg border p-2.5 ${item.is_active ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
-                            {item.icon_path
-                                ? <img src={`/storage/${item.icon_path}`} className="h-9 w-9 rounded object-contain" />
-                                : <div className="h-9 w-9 rounded bg-gray-200 flex items-center justify-center text-xs text-gray-400">?</div>
-                            }
+                            {item.icon_path ? <img src={`/storage/${item.icon_path}`} className="h-9 w-9 rounded object-contain" /> : <div className="h-9 w-9 rounded bg-gray-200 flex items-center justify-center text-xs text-gray-400">?</div>}
                             <span className="flex-1 text-sm font-medium text-gray-700">{item.title}</span>
                             <span className="text-xs text-gray-400">#{item.sort_order}</span>
                             <button type="button" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)} className="text-xs text-blue-600 hover:underline">
@@ -1055,9 +954,7 @@ function CustomTeamItems({ child }) {
                             <button type="button" onClick={() => del(item.id)} className="text-xs text-red-500 hover:underline">Del</button>
                         </div>
                     )}
-                    {expandedId === item.id && (
-                        <TeamSubItemsManager child={child} teamItem={item} />
-                    )}
+                    {expandedId === item.id && <TeamSubItemsManager child={child} teamItem={item} />}
                 </div>
             ))}
             {adding ? (
@@ -1072,7 +969,7 @@ function CustomTeamItems({ child }) {
     );
 }
 
-/* ── Medication Slots Manager ── */
+/* ── Medication ── */
 
 function MedSlotForm({ f, setF, onSubmit, onCancel, submitLabel }) {
     return (
@@ -1110,17 +1007,11 @@ function MedSlotForm({ f, setF, onSubmit, onCancel, submitLabel }) {
 function MedItemForm({ slotId, childId, onDone }) {
     const [name, setName] = useState('');
     const [dosage, setDosage] = useState('');
-
     const submit = (e) => {
         e.preventDefault();
         if (!name.trim() || !dosage.trim()) return;
-        router.post(
-            route('children.med-items.store', { child: childId, slot: slotId }),
-            { name, dosage, sort_order: 99 },
-            { preserveScroll: true, onSuccess: () => { setName(''); setDosage(''); onDone?.(); } }
-        );
+        router.post(route('children.med-items.store', { child: childId, slot: slotId }), { name, dosage, sort_order: 99 }, { preserveScroll: true, onSuccess: () => { setName(''); setDosage(''); onDone?.(); } });
     };
-
     return (
         <form onSubmit={submit} className="flex items-center gap-2 mt-2">
             <TextInput className="flex-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="Med name" required />
@@ -1138,34 +1029,19 @@ function MedSlotsManager({ child }) {
     const [editingSlot, setEditingSlot] = useState(null);
     const [editForm, setEditForm] = useState(null);
     const [expandedSlot, setExpandedSlot] = useState(null);
-
     const addSlot = (e) => {
         e.preventDefault();
-        router.post(
-            route('children.med-slots.store', child.id),
-            addForm,
-            { preserveScroll: true, onSuccess: () => { setAddForm(emptySlotForm); setShowAdd(false); } }
-        );
+        router.post(route('children.med-slots.store', child.id), addForm, { preserveScroll: true, onSuccess: () => { setAddForm(emptySlotForm); setShowAdd(false); } });
     };
-
     const saveSlot = (e) => {
         e.preventDefault();
-        router.post(
-            route('children.med-slots.update', { child: child.id, slot: editingSlot }),
-            editForm,
-            { preserveScroll: true, onSuccess: () => { setEditingSlot(null); setEditForm(null); } }
-        );
+        router.post(route('children.med-slots.update', { child: child.id, slot: editingSlot }), editForm, { preserveScroll: true, onSuccess: () => { setEditingSlot(null); setEditForm(null); } });
     };
-
     const delSlot = (id) => {
         if (!confirm('Delete this slot and all its medications?')) return;
         router.delete(route('children.med-slots.destroy', { child: child.id, slot: id }), { preserveScroll: true });
     };
-
-    const delItem = (slotId, itemId) => {
-        router.delete(route('children.med-items.destroy', { child: child.id, slot: slotId, item: itemId }), { preserveScroll: true });
-    };
-
+    const delItem = (slotId, itemId) => router.delete(route('children.med-items.destroy', { child: child.id, slot: slotId, item: itemId }), { preserveScroll: true });
     return (
         <div className="space-y-4">
             {slots.map((slot) => (
@@ -1190,7 +1066,6 @@ function MedSlotsManager({ child }) {
                                     <button type="button" onClick={() => delSlot(slot.id)} className="text-xs text-red-500 hover:underline">Del</button>
                                 </div>
                             </div>
-
                             {expandedSlot === slot.id && (
                                 <div className="p-4 space-y-2">
                                     {(slot.items || []).map((item) => (
@@ -1208,7 +1083,6 @@ function MedSlotsManager({ child }) {
                     )}
                 </div>
             ))}
-
             {showAdd ? (
                 <MedSlotForm f={addForm} setF={setAddForm} onSubmit={addSlot} onCancel={() => { setShowAdd(false); setAddForm(emptySlotForm); }} submitLabel="Add Slot" />
             ) : (
@@ -1221,36 +1095,50 @@ function MedSlotsManager({ child }) {
     );
 }
 
-/* ── Action menu (three-dot) ── */
+/* ── Page Headers ── */
+
+function PageHeadersManager({ child }) {
+    const headers = (child.page_headers || []);
+    const getHeader = (key) => headers.find((h) => h.page_key === key);
+    const upload = (key, file) => {
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('page_key', key);
+        fd.append('header_image', file);
+        router.post(route('children.page-headers.update', child.id), fd, { forceFormData: true, preserveScroll: true });
+    };
+    const remove = (key) => {
+        if (!confirm('Remove this header image?')) return;
+        router.delete(route('children.page-headers.destroy', { child: child.id, pageKey: key }), { preserveScroll: true });
+    };
+    return (
+        <div className="space-y-3">
+            {PAGE_HEADER_SLOTS.map(({ key, label }) => {
+                const existing = getHeader(key);
+                return (
+                    <div key={key} className="flex items-center gap-3 rounded-lg border border-gray-200 p-3">
+                        <div className="shrink-0 w-24 h-14 rounded overflow-hidden bg-gray-100 flex items-center justify-center">
+                            {existing?.header_image ? (
+                                <img src={`/storage/${existing.header_image}`} alt={label} className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-xs text-gray-400">No image</span>
+                            )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-700">{label}</p>
+                            <input type="file" accept="image/*" className="mt-1 block w-full text-xs text-gray-500" onChange={(e) => upload(key, e.target.files[0])} />
+                        </div>
+                        {existing?.header_image && (
+                            <button type="button" onClick={() => remove(key)} className="shrink-0 text-xs text-red-500 hover:text-red-700">Remove</button>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
 
 /* ── Ariya Team Manager ── */
-
-function fmt12(t) {
-    const [h, m] = t.split(':').map(Number);
-    const p = h < 12 ? 'am' : 'pm';
-    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-    return `${h12}:${m.toString().padStart(2, '0')} ${p}`;
-}
-
-function calcDur(s, e) {
-    const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-    let diff = toMin(e) - toMin(s);
-    if (diff < 0) diff += 1440;
-    const h = Math.floor(diff / 60), m = diff % 60;
-    return m === 0 ? `${h} hrs` : `${h} hrs ${m} mins`;
-}
-
-const SCHED_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const SCHED_DAY_HDR = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-
-const TEAM_GREEN = '#1a9e6b';
-const WEEK_DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-function getDayAbbr(dateStr) {
-    if (!dateStr) return '';
-    const d = new Date(dateStr + 'T00:00:00');
-    return WEEK_DAY_ABBR[d.getDay()];
-}
 
 function AriyaTeamManager({ child, users }) {
     const today = new Date();
@@ -1261,19 +1149,13 @@ function AriyaTeamManager({ child, users }) {
     const [calYear, setCalYear] = useState(today.getFullYear());
     const [calMonth, setCalMonth] = useState(today.getMonth());
     const [view, setView] = useState('list');
-
-    // Add shift form
     const [addDate, setAddDate] = useState(todayStr);
     const [addUser, setAddUser] = useState('');
     const [addStart, setAddStart] = useState('08:00');
     const [addEnd, setAddEnd] = useState('17:00');
     const [adding, setAdding] = useState(false);
-
-    // Calendar URL
     const [calUrl, setCalUrl] = useState(child.ariya_team_calendar_url || '');
     const [showUrlEditor, setShowUrlEditor] = useState(false);
-
-    // Edit
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState({});
 
@@ -1285,7 +1167,6 @@ function AriyaTeamManager({ child, users }) {
         .filter(s => (s.shift_date || '').startsWith(monthStr))
         .sort((a, b) => ((a.shift_date||'') < (b.shift_date||'') ? -1 : 1));
 
-    // Calendar grid
     const firstDow = new Date(calYear, calMonth, 1).getDay();
     const dim = new Date(calYear, calMonth+1, 0).getDate();
     const cells = [];
@@ -1306,14 +1187,7 @@ function AriyaTeamManager({ child, users }) {
         const date = dateOverride || addDate;
         if (!date || !addStart || !addEnd) return;
         setAdding(true);
-        router.post(route('children.team-schedules.store', child.id), {
-            user_id: addUser || null,
-            shift_date: date,
-            start_time: addStart,
-            end_time: addEnd,
-            sort_order: 0,
-            is_active: true,
-        }, { preserveScroll: true, onFinish: () => setAdding(false) });
+        router.post(route('children.team-schedules.store', child.id), { user_id: addUser || null, shift_date: date, start_time: addStart, end_time: addEnd, sort_order: 0, is_active: true }, { preserveScroll: true, onFinish: () => setAdding(false) });
     };
 
     const del = (id) => {
@@ -1323,129 +1197,65 @@ function AriyaTeamManager({ child, users }) {
 
     const submitEdit = (e) => {
         e.preventDefault();
-        router.post(route('children.team-schedules.update', { child: child.id, schedule: editingId }), editForm, {
-            preserveScroll: true, onSuccess: () => setEditingId(null),
-        });
+        router.post(route('children.team-schedules.update', { child: child.id, schedule: editingId }), editForm, { preserveScroll: true, onSuccess: () => setEditingId(null) });
     };
 
     const saveUrl = () => router.post(route('children.ariya-team.calendar-url', child.id), { calendar_url: calUrl }, { preserveScroll: true });
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
-
-            {/* ── TOP NAV BAR ── */}
             <div className="flex items-center gap-3 px-5 py-3 bg-gray-50 border-b border-gray-200 shrink-0 flex-wrap">
-                <button type="button" onClick={prevMonth}
-                    className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                <button type="button" onClick={prevMonth} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"/></svg>
                     {calMonth === 0 ? SCHED_MONTHS[11] : SCHED_MONTHS[calMonth-1]}
                 </button>
-
-                <h2 className="text-base font-bold text-gray-800 min-w-[150px] text-center">
-                    {SCHED_MONTHS[calMonth]} {calYear}
-                </h2>
-
-                <button type="button" onClick={nextMonth}
-                    className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                <h2 className="text-base font-bold text-gray-800 min-w-[150px] text-center">{SCHED_MONTHS[calMonth]} {calYear}</h2>
+                <button type="button" onClick={nextMonth} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
                     {calMonth === 11 ? SCHED_MONTHS[0] : SCHED_MONTHS[calMonth+1]}
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/></svg>
                 </button>
-
                 <div className="flex-1"/>
-
-                <span className="rounded-full px-3 py-1 text-xs font-semibold bg-emerald-100 text-emerald-700">
-                    {monthSchedules.length} shifts this month
-                </span>
-
-                {/* View toggle */}
+                <span className="rounded-full px-3 py-1 text-xs font-semibold bg-emerald-100 text-emerald-700">{monthSchedules.length} shifts this month</span>
                 <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
-                    <button type="button" onClick={() => setView('list')}
-                        className={`px-3 py-1.5 transition-colors ${view === 'list' ? 'bg-white text-gray-800 shadow-inner' : 'text-gray-500 hover:bg-gray-50'}`}>
-                        List
-                    </button>
-                    <button type="button" onClick={() => setView('calendar')}
-                        className={`px-3 py-1.5 border-l border-gray-200 transition-colors ${view === 'calendar' ? 'bg-white text-gray-800 shadow-inner' : 'text-gray-500 hover:bg-gray-50'}`}>
-                        Calendar
-                    </button>
+                    <button type="button" onClick={() => setView('list')} className={`px-3 py-1.5 transition-colors ${view === 'list' ? 'bg-white text-gray-800 shadow-inner' : 'text-gray-500 hover:bg-gray-50'}`}>List</button>
+                    <button type="button" onClick={() => setView('calendar')} className={`px-3 py-1.5 border-l border-gray-200 transition-colors ${view === 'calendar' ? 'bg-white text-gray-800 shadow-inner' : 'text-gray-500 hover:bg-gray-50'}`}>Calendar</button>
                 </div>
-
-                <button type="button" onClick={() => setShowUrlEditor(v => !v)}
-                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showUrlEditor ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
-                    School Calendar URL
-                </button>
+                <button type="button" onClick={() => setShowUrlEditor(v => !v)} className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showUrlEditor ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>School Calendar URL</button>
             </div>
 
-            {/* ── URL EDITOR (collapsible) ── */}
             {showUrlEditor && (
                 <div className="flex items-center gap-3 px-5 py-2.5 bg-amber-50 border-b border-amber-200 shrink-0">
                     <label className="text-xs font-semibold text-amber-700 shrink-0">School Calendar URL</label>
-                    <input
-                        type="url"
-                        className="flex-1 rounded-lg border-amber-300 text-sm shadow-sm focus:border-amber-400 focus:ring-amber-400"
-                        value={calUrl}
-                        onChange={e => setCalUrl(e.target.value)}
-                        placeholder="https://..."
-                    />
-                    <button type="button" onClick={saveUrl}
-                        className="rounded-lg bg-amber-500 text-white px-4 py-1.5 text-xs font-semibold hover:bg-amber-600 transition-colors">
-                        Save
-                    </button>
+                    <input type="url" className="flex-1 rounded-lg border-amber-300 text-sm shadow-sm focus:border-amber-400 focus:ring-amber-400" value={calUrl} onChange={e => setCalUrl(e.target.value)} placeholder="https://..." />
+                    <button type="button" onClick={saveUrl} className="rounded-lg bg-amber-500 text-white px-4 py-1.5 text-xs font-semibold hover:bg-amber-600 transition-colors">Save</button>
                 </div>
             )}
 
-            {/* ── ADD SHIFT BAR ── */}
             <div className="flex items-center gap-2 px-5 py-3 bg-white border-b border-gray-200 shrink-0 flex-wrap">
                 <span className="text-xs font-bold text-gray-400 uppercase tracking-wider shrink-0 mr-1">Add Shift</span>
-
-                <input
-                    type="date"
-                    className="rounded-lg border-gray-300 text-sm shadow-sm"
-                    value={addDate}
-                    onChange={e => setAddDate(e.target.value)}
-                />
-
-                <select
-                    className="rounded-lg border-gray-300 text-sm shadow-sm flex-1 min-w-[160px]"
-                    value={addUser}
-                    onChange={e => setAddUser(e.target.value)}
-                >
+                <input type="date" className="rounded-lg border-gray-300 text-sm shadow-sm" value={addDate} onChange={e => setAddDate(e.target.value)} />
+                <select className="rounded-lg border-gray-300 text-sm shadow-sm flex-1 min-w-[160px]" value={addUser} onChange={e => setAddUser(e.target.value)}>
                     <option value="">— TBD (unassigned) —</option>
                     {(users || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
-
                 <div className="flex items-center gap-1.5">
-                    <input type="time" className="rounded-lg border-gray-300 text-sm shadow-sm"
-                        value={addStart} onChange={e => setAddStart(e.target.value)} />
+                    <input type="time" className="rounded-lg border-gray-300 text-sm shadow-sm" value={addStart} onChange={e => setAddStart(e.target.value)} />
                     <span className="text-gray-400 text-sm">→</span>
-                    <input type="time" className="rounded-lg border-gray-300 text-sm shadow-sm"
-                        value={addEnd} onChange={e => setAddEnd(e.target.value)} />
+                    <input type="time" className="rounded-lg border-gray-300 text-sm shadow-sm" value={addEnd} onChange={e => setAddEnd(e.target.value)} />
                 </div>
-
-                {addStart && addEnd && (
-                    <span className="text-xs text-gray-400 shrink-0 w-20 text-center">{calcDur(addStart, addEnd)}</span>
-                )}
-
-                <button
-                    type="button"
-                    onClick={() => addShift()}
-                    disabled={adding || !addDate || !addStart || !addEnd}
-                    className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50 transition-opacity shrink-0"
-                    style={{ background: TEAM_GREEN }}
-                >
+                {addStart && addEnd && <span className="text-xs text-gray-400 shrink-0 w-20 text-center">{calcDur(addStart, addEnd)}</span>}
+                <button type="button" onClick={() => addShift()} disabled={adding || !addDate || !addStart || !addEnd} className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50 transition-opacity shrink-0" style={{ background: TEAM_GREEN }}>
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"/></svg>
                     {adding ? 'Adding…' : 'Add Shift'}
                 </button>
             </div>
 
-            {/* ── CONTENT AREA ── */}
             <div className="flex-1 overflow-y-auto">
-
                 {view === 'list' ? (
                     monthSchedules.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-48 text-gray-400 gap-2">
                             <svg className="h-10 w-10 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                             <p className="text-sm font-medium">No shifts in {SCHED_MONTHS[calMonth]} {calYear}</p>
-                            <p className="text-xs">Use the Add Shift bar above to create shifts.</p>
                         </div>
                     ) : (
                         <table className="w-full text-sm border-collapse">
@@ -1466,26 +1276,14 @@ function AriyaTeamManager({ child, users }) {
                                         <tr key={s.id} className="bg-emerald-50">
                                             <td colSpan={7} className="px-5 py-3">
                                                 <form onSubmit={submitEdit} className="flex items-center gap-3 flex-wrap">
-                                                    <input type="date" required
-                                                        className="rounded-lg border-gray-300 text-sm shadow-sm"
-                                                        value={editForm.shift_date}
-                                                        onChange={e => setEditForm({...editForm, shift_date: e.target.value})} />
-                                                    <select
-                                                        className="rounded-lg border-gray-300 text-sm shadow-sm flex-1 min-w-[160px]"
-                                                        value={editForm.user_id || ''}
-                                                        onChange={e => setEditForm({...editForm, user_id: e.target.value || null})}>
+                                                    <input type="date" required className="rounded-lg border-gray-300 text-sm shadow-sm" value={editForm.shift_date} onChange={e => setEditForm({...editForm, shift_date: e.target.value})} />
+                                                    <select className="rounded-lg border-gray-300 text-sm shadow-sm flex-1 min-w-[160px]" value={editForm.user_id || ''} onChange={e => setEditForm({...editForm, user_id: e.target.value || null})}>
                                                         <option value="">— TBD —</option>
                                                         {(users || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                                                     </select>
-                                                    <input type="time" required
-                                                        className="rounded-lg border-gray-300 text-sm shadow-sm"
-                                                        value={editForm.start_time}
-                                                        onChange={e => setEditForm({...editForm, start_time: e.target.value})} />
+                                                    <input type="time" required className="rounded-lg border-gray-300 text-sm shadow-sm" value={editForm.start_time} onChange={e => setEditForm({...editForm, start_time: e.target.value})} />
                                                     <span className="text-gray-400">→</span>
-                                                    <input type="time" required
-                                                        className="rounded-lg border-gray-300 text-sm shadow-sm"
-                                                        value={editForm.end_time}
-                                                        onChange={e => setEditForm({...editForm, end_time: e.target.value})} />
+                                                    <input type="time" required className="rounded-lg border-gray-300 text-sm shadow-sm" value={editForm.end_time} onChange={e => setEditForm({...editForm, end_time: e.target.value})} />
                                                     <PrimaryButton type="submit">Save</PrimaryButton>
                                                     <button type="button" onClick={() => setEditingId(null)} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
                                                 </form>
@@ -1497,15 +1295,9 @@ function AriyaTeamManager({ child, users }) {
                                             <td className="px-5 py-3 text-gray-500">{getDayAbbr((s.shift_date||'').substring(0,10))}</td>
                                             <td className="px-5 py-3">
                                                 {s.user?.name ? (
-                                                    <span className="inline-flex items-center gap-1.5">
-                                                        <span className="inline-block h-2 w-2 rounded-full bg-emerald-400"/>
-                                                        <span className="font-medium text-gray-800">{s.user.name}</span>
-                                                    </span>
+                                                    <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-emerald-400"/><span className="font-medium text-gray-800">{s.user.name}</span></span>
                                                 ) : (
-                                                    <span className="inline-flex items-center gap-1.5">
-                                                        <span className="inline-block h-2 w-2 rounded-full bg-red-400"/>
-                                                        <span className="font-medium text-red-500">TBD</span>
-                                                    </span>
+                                                    <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-red-400"/><span className="font-medium text-red-500">TBD</span></span>
                                                 )}
                                             </td>
                                             <td className="px-5 py-3 text-emerald-700 font-medium">{s.start_time ? fmt12(s.start_time) : '—'}</td>
@@ -1513,9 +1305,7 @@ function AriyaTeamManager({ child, users }) {
                                             <td className="px-5 py-3 text-gray-400">{s.start_time && s.end_time ? calcDur(s.start_time, s.end_time) : '—'}</td>
                                             <td className="px-5 py-3">
                                                 <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button type="button"
-                                                        onClick={() => { setEditingId(s.id); setEditForm({ user_id: s.user_id || '', shift_date: (s.shift_date||'').substring(0,10), start_time: s.start_time || '08:00', end_time: s.end_time || '17:00', sort_order: s.sort_order || 0, is_active: s.is_active ?? true }); }}
-                                                        className="text-xs font-medium text-indigo-600 hover:underline">Edit</button>
+                                                    <button type="button" onClick={() => { setEditingId(s.id); setEditForm({ user_id: s.user_id || '', shift_date: (s.shift_date||'').substring(0,10), start_time: s.start_time || '08:00', end_time: s.end_time || '17:00', sort_order: s.sort_order || 0, is_active: s.is_active ?? true }); }} className="text-xs font-medium text-indigo-600 hover:underline">Edit</button>
                                                     <button type="button" onClick={() => del(s.id)} className="text-xs font-medium text-red-500 hover:underline">Delete</button>
                                                 </div>
                                             </td>
@@ -1526,49 +1316,28 @@ function AriyaTeamManager({ child, users }) {
                         </table>
                     )
                 ) : (
-                    /* ── CALENDAR VIEW ── */
                     <div>
                         <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
-                            {SCHED_DAY_HDR.map(d => (
-                                <div key={d} className="py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">{d.slice(0,3)}</div>
-                            ))}
+                            {SCHED_DAY_HDR.map(d => <div key={d} className="py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">{d.slice(0,3)}</div>)}
                         </div>
                         <div className="grid grid-cols-7">
                             {cells.map((day, idx) => {
-                                if (day === null) {
-                                    return <div key={`e-${idx}`} className={`min-h-[100px] bg-gray-50/50 border-b border-gray-100 ${idx % 7 !== 6 ? 'border-r' : ''} border-gray-100`} />;
-                                }
+                                if (day === null) return <div key={`e-${idx}`} className={`min-h-[100px] bg-gray-50/50 border-b border-gray-100 ${idx % 7 !== 6 ? 'border-r' : ''} border-gray-100`} />;
                                 const ds = toDateStr(calYear, calMonth, day);
                                 const dayShifts = byDate[ds] || [];
                                 const isToday = ds === todayStr;
-                                const isLastCol = idx % 7 === 6;
                                 return (
-                                    <div
-                                        key={ds}
-                                        onClick={() => addShift(ds)}
-                                        title="Click to add shift for this day"
-                                        className={`min-h-[100px] border-b border-gray-100 p-2 cursor-pointer hover:bg-emerald-50/30 transition-colors group/cell ${isLastCol ? '' : 'border-r border-gray-100'}`}
-                                    >
+                                    <div key={ds} onClick={() => addShift(ds)} title="Click to add shift" className={`min-h-[100px] border-b border-gray-100 p-2 cursor-pointer hover:bg-emerald-50/30 transition-colors group/cell ${idx % 7 !== 6 ? 'border-r border-gray-100' : ''}`}>
                                         <div className="flex items-center justify-between mb-1">
-                                            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${isToday ? 'text-white' : 'text-gray-600'}`}
-                                                style={isToday ? { background: TEAM_GREEN } : {}}>
-                                                {day}
-                                            </span>
+                                            <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${isToday ? 'text-white' : 'text-gray-600'}`} style={isToday ? { background: TEAM_GREEN } : {}}>{day}</span>
                                             <span className="opacity-0 group-hover/cell:opacity-100 text-xs text-emerald-500 font-bold transition-opacity">+</span>
                                         </div>
                                         <div className="space-y-1">
                                             {dayShifts.map(s => (
-                                                <div key={s.id} onClick={e => e.stopPropagation()}
-                                                    className="group/shift relative rounded bg-emerald-50 border-l-2 border-emerald-400 px-1.5 py-1">
-                                                    <p className={`text-xs font-semibold truncate leading-tight ${s.user?.name ? 'text-gray-800' : 'text-red-500'}`}>
-                                                        {s.user?.name || 'TBD'}
-                                                    </p>
-                                                    <p className="text-emerald-600 leading-tight" style={{fontSize:'10px'}}>
-                                                        {fmt12(s.start_time)}–{fmt12(s.end_time)}
-                                                    </p>
-                                                    <button type="button" onClick={() => del(s.id)}
-                                                        className="absolute top-0.5 right-0.5 opacity-0 group-hover/shift:opacity-100 text-red-400 hover:text-red-600 transition-opacity"
-                                                        title="Remove shift">
+                                                <div key={s.id} onClick={e => e.stopPropagation()} className="group/shift relative rounded bg-emerald-50 border-l-2 border-emerald-400 px-1.5 py-1">
+                                                    <p className={`text-xs font-semibold truncate leading-tight ${s.user?.name ? 'text-gray-800' : 'text-red-500'}`}>{s.user?.name || 'TBD'}</p>
+                                                    <p className="text-emerald-600 leading-tight" style={{fontSize:'10px'}}>{fmt12(s.start_time)}–{fmt12(s.end_time)}</p>
+                                                    <button type="button" onClick={() => del(s.id)} className="absolute top-0.5 right-0.5 opacity-0 group-hover/shift:opacity-100 text-red-400 hover:text-red-600 transition-opacity">
                                                         <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
                                                     </button>
                                                 </div>
@@ -1582,698 +1351,200 @@ function AriyaTeamManager({ child, users }) {
                 )}
             </div>
 
-            {/* ── FOOTER STATS ── */}
             <div className="flex items-center gap-6 px-5 py-2.5 bg-gray-50 border-t border-gray-200 shrink-0 text-xs text-gray-400">
                 <span>{allSchedules.length} total shifts</span>
-                <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-400"/>Assigned
-                </span>
-                <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-2 w-2 rounded-full bg-red-400"/>TBD
-                </span>
-                {view === 'calendar' && (
-                    <span className="text-emerald-600">Click a calendar day to select it in the add form.</span>
-                )}
+                <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-emerald-400"/>Assigned</span>
+                <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-red-400"/>TBD</span>
             </div>
         </div>
     );
 }
 
-/* ── Schedule Email Manager ── */
+/* ── Dashboard Menu Panel (preset + custom) ── */
 
-function ScheduleEmailManager({ child }) {
-    const stored = child.schedule_email_recipients || [];
-    const [emails, setEmails] = useState([
-        stored[0] || '',
-        stored[1] || '',
-        stored[2] || '',
-    ]);
-    const [date, setDate] = useState(() => {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function DashboardMenuPanel({ child }) {
+    const [selectedMenuItems, setSelectedMenuItems] = useState(() => {
+        const existing = child.menu_items || [];
+        return ALL_MENU_ITEMS.map((m) => {
+            const saved = existing.find((i) => i.image === m.image);
+            return { image: m.image, label: m.label, is_active: saved?.is_active ?? false, sort_order: saved?.sort_order ?? 99 };
+        });
     });
-    const [sending, setSending] = useState(false);
-    const [flash, setFlash] = useState(null);
+
+    useEffect(() => {
+        const existing = child.menu_items || [];
+        setSelectedMenuItems(ALL_MENU_ITEMS.map((m) => {
+            const saved = existing.find((i) => i.image === m.image);
+            return { image: m.image, label: m.label, is_active: saved?.is_active ?? false, sort_order: saved?.sort_order ?? 99 };
+        }));
+    }, [child]);
+
+    const update = (image, field, value) =>
+        setSelectedMenuItems(prev => prev.map(i => i.image === image ? { ...i, [field]: value } : i));
 
     const save = () => {
-        router.post(route('children.schedule-email-recipients', child.id), { recipients: emails }, {
-            preserveScroll: true,
-            onSuccess: () => setFlash({ type: 'success', msg: 'Recipients saved.' }),
-        });
-    };
-
-    const send = () => {
-        if (!window.confirm(`Send today's schedule email for ${date}?`)) return;
-        setSending(true);
-        router.post(route('children.send-daily-schedule', child.id), { date }, {
-            preserveScroll: true,
-            onSuccess: () => { setFlash({ type: 'success', msg: 'Email sent successfully.' }); setSending(false); },
-            onError: () => { setFlash({ type: 'error', msg: 'Failed to send. Check recipients.' }); setSending(false); },
-        });
+        const items = selectedMenuItems.map(m => ({ image: m.image, label: m.label, href: '#', sort_order: m.sort_order, is_active: m.is_active }));
+        router.post(route('children.menu-items.sync', child.id), { items }, { preserveScroll: true });
     };
 
     return (
-        <div className="space-y-5">
-            {flash && (
-                <div className={`rounded-lg px-4 py-2.5 text-sm font-medium ${flash.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                    {flash.msg}
-                </div>
-            )}
-
+        <div className="space-y-6">
             <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Recipients (up to 3)</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Preset Items</p>
                 <div className="space-y-2">
-                    {[0, 1, 2].map((i) => (
-                        <div key={i} className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400 w-16">Email {i + 1}</span>
-                            <TextInput
-                                type="email"
-                                className="flex-1"
-                                placeholder="recipient@example.com"
-                                value={emails[i]}
-                                onChange={(e) => { const n = [...emails]; n[i] = e.target.value; setEmails(n); }}
-                            />
+                    {selectedMenuItems.map((item) => (
+                        <div key={item.image} className={`grid grid-cols-[40px_1fr_80px_56px] items-center gap-3 rounded-lg border p-2.5 ${item.is_active ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}>
+                            <img src={`/images/dashboard/${item.image}`} className="h-9 w-9 object-contain" />
+                            <span className="text-sm font-medium text-gray-700">{item.label}</span>
+                            <input type="number" min="0" value={item.sort_order} onChange={(e) => update(item.image, 'sort_order', parseInt(e.target.value) || 0)} className="w-full rounded border-gray-300 text-center text-sm shadow-sm" />
+                            <div className="flex justify-center">
+                                <button type="button" onClick={() => update(item.image, 'is_active', !item.is_active)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.is_active ? 'bg-indigo-600' : 'bg-gray-300'}`}>
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${item.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                            </div>
                         </div>
                     ))}
                 </div>
-                <button
-                    type="button"
-                    onClick={save}
-                    className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
-                >
-                    Save Recipients
-                </button>
-            </div>
-
-            <div className="border-t border-gray-100 pt-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Send Daily Schedule</p>
-                <div className="flex items-center gap-3">
-                    <input
-                        type="date"
-                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm"
-                        value={date}
-                        onChange={(e) => setDate(e.target.value)}
-                    />
-                    <button
-                        type="button"
-                        onClick={send}
-                        disabled={sending || emails.every(e => !e)}
-                        className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 transition-colors disabled:opacity-40"
-                    >
-                        {sending ? 'Sending…' : 'Send Email Now'}
-                    </button>
+                <div className="mt-3 flex justify-end">
+                    <PrimaryButton onClick={save}>Save Preset Items</PrimaryButton>
                 </div>
-                <p className="mt-2 text-xs text-gray-400">Sends today's team shift schedule to all configured recipients.</p>
+            </div>
+            <div className="border-t pt-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Custom Items</p>
+                <CustomMenuItems child={child} />
             </div>
         </div>
     );
 }
 
-/* ── Page Headers Manager ── */
+/* ── Section Panel router ── */
 
-const PAGE_HEADER_SLOTS = [
-    { key: 'emergency',       label: 'Emergency' },
-    { key: 'mandatory-tasks', label: 'Mandatory Tasks' },
-    { key: 'medication',      label: 'Medication' },
-    { key: 'team-training',   label: 'Team Training' },
-    { key: 'ariya-status',    label: 'Ariya Tube' },
-    { key: 'ariya-behavior',  label: 'Ariya Art' },
-];
-
-function PageHeadersManager({ child }) {
-    const headers = (child.page_headers || []);
-    const getHeader = (key) => headers.find((h) => h.page_key === key);
-
-    const upload = (key, file) => {
-        if (!file) return;
-        const fd = new FormData();
-        fd.append('page_key', key);
-        fd.append('header_image', file);
-        router.post(route('children.page-headers.update', child.id), fd, {
-            forceFormData: true,
-            preserveScroll: true,
-        });
-    };
-
-    const remove = (key) => {
-        if (!confirm('Remove this header image?')) return;
-        router.delete(route('children.page-headers.destroy', { child: child.id, pageKey: key }), { preserveScroll: true });
-    };
-
-    return (
-        <div className="space-y-3">
-            {PAGE_HEADER_SLOTS.map(({ key, label }) => {
-                const existing = getHeader(key);
-                return (
-                    <div key={key} className="flex items-center gap-3 rounded-lg border border-gray-200 p-3">
-                        <div className="shrink-0 w-24 h-14 rounded overflow-hidden bg-gray-100 flex items-center justify-center">
-                            {existing?.header_image ? (
-                                <img src={`/storage/${existing.header_image}`} alt={label} className="w-full h-full object-cover" />
-                            ) : (
-                                <span className="text-xs text-gray-400">No image</span>
-                            )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-700">{label}</p>
-                            <input
-                                type="file"
-                                accept="image/*"
-                                className="mt-1 block w-full text-xs text-gray-500"
-                                onChange={(e) => upload(key, e.target.files[0])}
-                            />
-                        </div>
-                        {existing?.header_image && (
-                            <button type="button" onClick={() => remove(key)} className="shrink-0 text-xs text-red-500 hover:text-red-700">Remove</button>
-                        )}
-                    </div>
-                );
-            })}
-        </div>
+function SectionPanel({ sectionKey, child, scheduleUsers }) {
+    const wrap = (content) => (
+        <div className="flex-1 overflow-y-auto p-6">{content}</div>
     );
-}
-
-function ActionMenu({ child, onEdit, onDelete, onMapUsers, onDashboardMenu, onEmergency, onMandatory, onFaceSheet, onAriyaStatus, onAriyaBehavior, onMedication, onTeamTraining, onPageHeaders, onAriyaTeam, onScheduleEmail }) {
-    const [open, setOpen] = useState(false);
-    const ref = useRef(null);
-
-    useEffect(() => {
-        const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, []);
-
-    const primaryActions = [
-        { label: 'Edit details', meta: 'Name and photo', onClick: onEdit, color: 'text-slate-700' },
-        { label: 'Users', meta: 'Assignments', onClick: onMapUsers, color: 'text-emerald-700' },
-        { label: 'Menu', meta: 'Dashboard items', onClick: onDashboardMenu, color: 'text-indigo-700' },
-    ];
-
-    const contentActions = [
-        { label: 'Emergency', onClick: onEmergency, tone: 'border-red-200 bg-red-50 text-red-700' },
-        { label: 'Mandatory', onClick: onMandatory, tone: 'border-indigo-200 bg-indigo-50 text-indigo-700' },
-        { label: 'Face Sheet', onClick: onFaceSheet, tone: 'border-sky-200 bg-sky-50 text-sky-700' },
-        { label: 'Ariya Tube', onClick: onAriyaStatus, tone: 'border-teal-200 bg-teal-50 text-teal-700' },
-        { label: 'Ariya Art', onClick: onAriyaBehavior, tone: 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700' },
-        { label: 'Medication', onClick: onMedication, tone: 'border-pink-200 bg-pink-50 text-pink-700' },
-        { label: 'Team', onClick: onTeamTraining, tone: 'border-blue-200 bg-blue-50 text-blue-700' },
-        { label: 'Headers', onClick: onPageHeaders, tone: 'border-violet-200 bg-violet-50 text-violet-700' },
-        { label: 'Ariya Team', onClick: onAriyaTeam, tone: 'border-green-200 bg-green-50 text-green-700' },
-        { label: 'Schedule Email', onClick: onScheduleEmail, tone: 'border-orange-200 bg-orange-50 text-orange-700' },
-    ];
-
-    const run = (action) => {
-        action();
-        setOpen(false);
-    };
-
-    return (
-        <div className="relative" ref={ref}>
-            <button
-                onClick={() => setOpen((v) => !v)}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-700"
-                aria-label={`Manage ${child.name}`}
-            >
-                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                </svg>
-            </button>
-            {open && (
-                <div className="absolute right-0 top-11 z-30 w-72 rounded-2xl border border-gray-200 bg-white p-3 shadow-xl ring-1 ring-black/5">
-                    <div className="border-b border-gray-100 pb-3">
-                        <p className="text-sm font-semibold text-gray-900">Manage {child.name}</p>
-                        <p className="mt-0.5 text-xs text-gray-500">Quick access to child settings and section content.</p>
-                    </div>
-
-                    <div className="pt-3">
-                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Basics</p>
-                        <div className="space-y-1.5">
-                            {primaryActions.map((action) => (
-                                <button
-                                    key={action.label}
-                                    type="button"
-                                    onClick={() => run(action.onClick)}
-                                    className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-gray-50"
-                                >
-                                    <div>
-                                        <p className={`text-sm font-medium ${action.color}`}>{action.label}</p>
-                                        <p className="text-xs text-gray-400">{action.meta}</p>
-                                    </div>
-                                    <svg className="h-4 w-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                                    </svg>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="border-t border-gray-100 pt-3 mt-3">
-                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Content Managers</p>
-                        <div className="grid grid-cols-2 gap-2">
-                            {contentActions.map((action) => (
-                                <button
-                                    key={action.label}
-                                    type="button"
-                                    onClick={() => run(action.onClick)}
-                                    className={`rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-transform hover:-translate-y-0.5 ${action.tone}`}
-                                >
-                                    {action.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="border-t border-gray-100 pt-3 mt-3">
-                        <button
-                            type="button"
-                            onClick={() => run(onDelete)}
-                            className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
-                        >
-                            <span>Delete child</span>
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
-
-/* ── Shared modal wrapper ── */
-
-function Modal({ title, subtitle, onClose, children, footer, size = 'max-w-2xl', noPad = false }) {
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-4">
-            <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-            <div className={`relative w-full ${size} rounded-xl bg-white shadow-2xl max-h-[95vh] flex flex-col`}>
-                <div className="flex items-start justify-between border-b border-gray-100 px-6 py-4 shrink-0">
-                    <div>
-                        <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-                        {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
-                    </div>
-                    <button onClick={onClose} className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-                <div className={`flex-1 overflow-hidden flex flex-col ${noPad ? '' : 'px-6 py-4 overflow-y-auto'}`}>{children}</div>
-                {footer && <div className="border-t border-gray-100 px-6 py-4 flex gap-3 shrink-0">{footer}</div>}
-            </div>
-        </div>
-    );
-}
-
-/* ── Page ── */
-
-export default function Children({ children, assignableUsers = [], scheduleUsers = [], isSuperadmin = false }) {
-    const { data, setData, post, processing, reset, errors } = useForm({ name: '', photo: null, user_ids: [] });
-    const { data: editData, setData: setEditData, put: putEdit, processing: editProcessing, errors: editErrors, reset: resetEdit } = useForm({ id: null, name: '', photo: null });
-
-    const [showCreate, setShowCreate] = useState(false);
-    const [showEdit, setShowEdit] = useState(false);
-    const [mappingByChild, setMappingByChild] = useState(() => {
-        const init = {};
-        children.forEach((c) => { init[c.id] = (c.users || []).map((u) => u.id); });
-        return init;
-    });
-    const [showMapModalFor, setShowMapModalFor] = useState(null);
-    const [deleteConfirmFor, setDeleteConfirmFor] = useState(null);
-    const [menuModalFor, setMenuModalFor] = useState(null);
-    const [selectedMenuItems, setSelectedMenuItems] = useState([]);
-    const [emergencyModalFor, setEmergencyModalFor] = useState(null);
-    const [mandatoryModalFor, setMandatoryModalFor] = useState(null);
-    const [faceSheetModalFor, setFaceSheetModalFor] = useState(null);
-    const [ariyaStatusModalFor, setAriyaStatusModalFor] = useState(null);
-    const [ariyaBehaviorModalFor, setAriyaBehaviorModalFor] = useState(null);
-    const [medicationModalFor, setMedicationModalFor] = useState(null);
-    const [teamModalFor, setTeamModalFor] = useState(null);
-    const [pageHeadersModalFor, setPageHeadersModalFor] = useState(null);
-    const [ariyaTeamModalFor, setAriyaTeamModalFor] = useState(null);
-    const [scheduleEmailModalFor, setScheduleEmailModalFor] = useState(null);
-
-    function submit(e) {
-        e.preventDefault();
-        post(route('children.store'), { onSuccess: () => { reset(); setShowCreate(false); } });
+    switch (sectionKey) {
+        case 'dashboard-menu':
+            return <div className="flex-1 overflow-y-auto p-6"><DashboardMenuPanel child={child} /></div>;
+        case 'emergency':
+            return wrap(<><EmergencyTitleEditor child={child} /><div className="border-t my-4" /><CustomEmergencyItems child={child} /></>);
+        case 'mandatory-tasks':
+            return wrap(<><MandatoryTitleEditor child={child} /><div className="border-t my-4" /><MandatoryItemsManager child={child} /></>);
+        case 'face-sheet':
+            return wrap(<FaceSheetManager child={child} />);
+        case 'ariya-tube':
+            return wrap(<AriyaItemsManager child={child} type="status" />);
+        case 'ariya-art':
+            return wrap(<AriyaArtManager child={child} />);
+        case 'sleep':
+            return wrap(<AriyaItemsManager child={child} type="sleep" />);
+        case 'team-training':
+            return wrap(<><TeamTitleEditor child={child} /><div className="border-t my-4" /><CustomTeamItems child={child} /></>);
+        case 'ariya-team':
+            return <div className="flex-1 overflow-hidden flex flex-col"><AriyaTeamManager child={child} users={scheduleUsers} /></div>;
+        case 'medication':
+            return wrap(<MedSlotsManager child={child} />);
+        case 'page-headers':
+            return wrap(<PageHeadersManager child={child} />);
+        default:
+            return wrap(<p className="text-sm text-gray-400">Select a section.</p>);
     }
+}
 
-    const openEdit = (c) => { setEditData({ id: c.id, name: c.name || '', photo: null }); setShowEdit(true); };
-    const closeEdit = () => { resetEdit(); setShowEdit(false); };
-    const submitEdit = (e) => { e.preventDefault(); putEdit(route('children.update', editData.id), { onSuccess: closeEdit }); };
+/* ── Main Page ── */
 
-    const toggleMappingUser = (childId, userId) => {
-        const cur = mappingByChild[childId] || [];
-        setMappingByChild({ ...mappingByChild, [childId]: cur.includes(userId) ? cur.filter((id) => id !== userId) : [...cur, userId] });
-    };
-    const saveMapping = (childId) => router.post(route('children.sync-users', childId), { user_ids: mappingByChild[childId] || [] }, { preserveScroll: true });
-
-    const openMenuModal = (c) => {
-        const existing = c.menu_items || [];
-        setSelectedMenuItems(
-            ALL_MENU_ITEMS.map((m) => {
-                const saved = existing.find((i) => i.image === m.image);
-                return { image: m.image, label: m.label, is_active: saved ? saved.is_active : false, sort_order: saved ? saved.sort_order : 99 };
-            })
-        );
-        setMenuModalFor(c);
-    };
-    const updatePresetMenuItem = (image, field, value) => setSelectedMenuItems((prev) => prev.map((i) => i.image === image ? { ...i, [field]: value } : i));
-    const saveMenuItems = () => {
-        const items = selectedMenuItems.map((m) => ({ image: m.image, label: m.label, href: '#', sort_order: m.sort_order, is_active: m.is_active }));
-        router.post(route('children.menu-items.sync', menuModalFor.id), { items }, { preserveScroll: true, onSuccess: () => setMenuModalFor(null) });
-    };
-
-    const openEmergencyModal = (c) => setEmergencyModalFor(c);
-
-    /* Keep emergencyModalFor in sync with fresh children prop after Inertia reloads */
-    useEffect(() => {
-        if (!emergencyModalFor) return;
-        const fresh = children.find((c) => c.id === emergencyModalFor.id);
-        if (fresh) setEmergencyModalFor(fresh);
-    }, [children]);
+export default function ContentManager({ children = [], scheduleUsers = [] }) {
+    const [selectedChild, setSelectedChild] = useState(children[0] ?? null);
+    const [selectedSection, setSelectedSection] = useState(null);
 
     useEffect(() => {
-        if (!menuModalFor) return;
-        const fresh = children.find((c) => c.id === menuModalFor.id);
-        if (fresh) setMenuModalFor(fresh);
-    }, [children]);
-
-    useEffect(() => {
-        if (!mandatoryModalFor) return;
-        const fresh = children.find((c) => c.id === mandatoryModalFor.id);
-        if (fresh) setMandatoryModalFor(fresh);
-    }, [children]);
-
-    useEffect(() => {
-        if (!faceSheetModalFor) return;
-        const fresh = children.find((c) => c.id === faceSheetModalFor.id);
-        if (fresh) setFaceSheetModalFor(fresh);
-    }, [children]);
-
-    useEffect(() => {
-        if (!ariyaStatusModalFor) return;
-        const fresh = children.find((c) => c.id === ariyaStatusModalFor.id);
-        if (fresh) setAriyaStatusModalFor(fresh);
-    }, [children]);
-
-    useEffect(() => {
-        if (!ariyaBehaviorModalFor) return;
-        const fresh = children.find((c) => c.id === ariyaBehaviorModalFor.id);
-        if (fresh) setAriyaBehaviorModalFor(fresh);
-    }, [children]);
-
-    useEffect(() => {
-        if (!medicationModalFor) return;
-        const fresh = children.find((c) => c.id === medicationModalFor.id);
-        if (fresh) setMedicationModalFor(fresh);
-    }, [children]);
-
-    useEffect(() => {
-        if (!teamModalFor) return;
-        const fresh = children.find((c) => c.id === teamModalFor.id);
-        if (fresh) setTeamModalFor(fresh);
-    }, [children]);
-
-    useEffect(() => {
-        if (!pageHeadersModalFor) return;
-        const fresh = children.find((c) => c.id === pageHeadersModalFor.id);
-        if (fresh) setPageHeadersModalFor(fresh);
-    }, [children]);
-
-    useEffect(() => {
-        if (!ariyaTeamModalFor) return;
-        const fresh = children.find((c) => c.id === ariyaTeamModalFor.id);
-        if (fresh) setAriyaTeamModalFor(fresh);
+        if (!selectedChild) return;
+        const fresh = children.find(c => c.id === selectedChild.id);
+        if (fresh) setSelectedChild(fresh);
     }, [children]);
 
     return (
-        <AuthenticatedLayout header={<h2 className="text-xl font-semibold leading-tight text-gray-800">Child Management</h2>}>
-            <Head title="Children" />
+        <AuthenticatedLayout>
+            <Head title="Content Manager" />
 
-            <div className="space-y-6 p-6">
+            <div className="flex h-[calc(100vh-64px)] overflow-hidden">
 
-                {isSuperadmin && (
-                    <div className="flex justify-end">
-                        <button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm">
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                            Add Child
-                        </button>
+                {/* Panel 1: Children */}
+                <div className="w-56 shrink-0 border-r border-gray-200 bg-white flex flex-col overflow-y-auto">
+                    <div className="px-4 py-3.5 border-b border-gray-100 shrink-0">
+                        <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Children</p>
+                    </div>
+                    <div className="flex-1 py-2">
+                        {children.map((c) => {
+                            const photo = normalizePhoto(c.photo);
+                            const active = selectedChild?.id === c.id;
+                            return (
+                                <button
+                                    key={c.id}
+                                    onClick={() => { setSelectedChild(c); setSelectedSection(null); }}
+                                    className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left transition-colors ${active ? 'bg-indigo-50 border-r-2 border-indigo-500' : 'hover:bg-gray-50'}`}
+                                >
+                                    {photo ? (
+                                        <img src={photo} alt={c.name} className="h-8 w-8 rounded-full object-cover shrink-0" />
+                                    ) : (
+                                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                                            {c.name[0].toUpperCase()}
+                                        </div>
+                                    )}
+                                    <p className={`text-sm font-medium truncate ${active ? 'text-indigo-700' : 'text-gray-800'}`}>{c.name}</p>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Panel 2: Sections (only when child selected) */}
+                {selectedChild && (
+                    <div className="w-48 shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col overflow-y-auto">
+                        <div className="px-4 py-3.5 border-b border-gray-100 shrink-0">
+                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Sections</p>
+                        </div>
+                        <div className="flex-1 py-2">
+                            {SECTIONS.map((s) => {
+                                const active = selectedSection === s.key;
+                                return (
+                                    <button
+                                        key={s.key}
+                                        onClick={() => setSelectedSection(s.key)}
+                                        className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left transition-colors ${active ? 'bg-white border-r-2 border-indigo-500' : 'hover:bg-white/60'}`}
+                                    >
+                                        {s.image ? (
+                                            <img src={`/images/dashboard/${s.image}`} alt={s.label} className="h-6 w-6 object-contain shrink-0" />
+                                        ) : (
+                                            <div className="h-6 w-6 rounded bg-gray-200 flex items-center justify-center shrink-0">
+                                                <svg className="h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                                            </div>
+                                        )}
+                                        <span className={`text-sm font-medium truncate ${active ? 'text-indigo-700' : 'text-gray-700'}`}>{s.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {children.map((c) => {
-                        const photoSrc = c.photo ? `/storage/${c.photo}` : null;
-                        return (
-                            <div key={c.id} className="relative rounded-xl bg-white shadow-sm ring-1 ring-gray-200 p-5 flex flex-col gap-4">
-                                <div className="flex items-center gap-3">
-                                    {photoSrc ? (
-                                        <img src={photoSrc} alt={c.name} className="h-12 w-12 rounded-full object-cover ring-2 ring-gray-100" />
-                                    ) : (
-                                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 text-lg font-bold text-white">
-                                            {c.name.slice(0, 1).toUpperCase()}
-                                        </div>
-                                    )}
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-semibold text-gray-900 truncate">{c.name}</p>
-                                        <p className="text-xs text-gray-400">{(c.users || []).length} user{(c.users || []).length !== 1 ? 's' : ''} assigned</p>
-                                    </div>
-                                    {isSuperadmin && (
-                                        <ActionMenu
-                                            child={c}
-                                            onEdit={() => openEdit(c)}
-                                            onDelete={() => setDeleteConfirmFor(c.id)}
-                                            onMapUsers={() => setShowMapModalFor(c.id)}
-                                            onDashboardMenu={() => openMenuModal(c)}
-                                            onMandatory={() => setMandatoryModalFor(c)}
-                                            onFaceSheet={() => setFaceSheetModalFor(c)}
-                                            onAriyaStatus={() => setAriyaStatusModalFor(c)}
-                                            onAriyaBehavior={() => setAriyaBehaviorModalFor(c)}
-                                            onMedication={() => setMedicationModalFor(c)}
-                                            onTeamTraining={() => setTeamModalFor(c)}
-                                            onEmergency={() => openEmergencyModal(c)}
-                                            onPageHeaders={() => setPageHeadersModalFor(c)}
-                                            onAriyaTeam={() => setAriyaTeamModalFor(c)}
-                                            onScheduleEmail={() => setScheduleEmailModalFor(c)}
-                                        />
-                                    )}
-                                </div>
+                {/* Panel 3: Management content */}
+                {selectedChild && selectedSection ? (
+                    <SectionPanel
+                        key={`${selectedChild.id}-${selectedSection}`}
+                        sectionKey={selectedSection}
+                        child={selectedChild}
+                        scheduleUsers={scheduleUsers}
+                    />
+                ) : (
+                    <div className="flex-1 flex items-center justify-center">
+                        <p className="text-sm text-gray-400">
+                            {!selectedChild ? 'Select a child to get started.' : 'Select a section to manage content.'}
+                        </p>
+                    </div>
+                )}
 
-                                {(c.users || []).length > 0 && (
-                                    <div>
-                                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Assigned Users</p>
-                                        <div className="flex flex-wrap gap-1">
-                                            {c.users.map((u) => (
-                                                <span key={u.id} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{u.name}</span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div>
-                                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Dashboard Menu</p>
-                                    <div className="flex flex-wrap gap-1">
-                                        {(c.menu_items || []).length > 0 ? (
-                                            c.menu_items.map((m, idx) => (
-                                                m.icon_path
-                                                    ? <img key={idx} src={`/storage/${m.icon_path}`} title={m.label} className="h-7 w-7 object-contain rounded" />
-                                                    : <img key={idx} src={`/images/dashboard/${m.image}`} title={m.label} className="h-7 w-7 object-contain" />
-                                            ))
-                                        ) : (
-                                            <span className="text-xs text-gray-400 italic">All items shown</span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
             </div>
-
-            {/* Create Modal */}
-            {showCreate && (
-                <Modal title="Add Child" onClose={() => setShowCreate(false)}
-                    footer={<><PrimaryButton disabled={processing} onClick={submit}>Create</PrimaryButton><button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancel</button></>}
-                >
-                    <form onSubmit={submit} className="space-y-4">
-                        <div>
-                            <label className="text-sm font-medium text-gray-700">Name</label>
-                            <TextInput className="w-full mt-1" placeholder="Child name" value={data.name} onChange={(e) => setData('name', e.target.value)} />
-                            <InputError message={errors.name} className="mt-1" />
-                        </div>
-                        <div>
-                            <label className="text-sm font-medium text-gray-700">Photo (optional)</label>
-                            <input type="file" accept="image/*" className="mt-1 block text-sm" onChange={(e) => setData('photo', e.target.files[0])} />
-                        </div>
-                        {assignableUsers.length > 0 && (
-                            <div>
-                                <label className="text-sm font-medium text-gray-700">Assign users</label>
-                                <div className="mt-2 grid grid-cols-2 gap-2">
-                                    {assignableUsers.map((u) => (
-                                        <label key={u.id} className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50">
-                                            <input type="checkbox" className="rounded border-gray-300 text-indigo-600" checked={data.user_ids.includes(u.id)} onChange={() => setData('user_ids', data.user_ids.includes(u.id) ? data.user_ids.filter((x) => x !== u.id) : [...data.user_ids, u.id])} />
-                                            <span>{u.name}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </form>
-                </Modal>
-            )}
-
-            {/* Edit Modal */}
-            {showEdit && (
-                <Modal title="Edit Child" onClose={closeEdit}
-                    footer={<><PrimaryButton disabled={editProcessing} onClick={submitEdit}>Save</PrimaryButton><button type="button" onClick={closeEdit} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancel</button></>}
-                >
-                    <form onSubmit={submitEdit} className="space-y-4">
-                        <div>
-                            <label className="text-sm font-medium text-gray-700">Name</label>
-                            <TextInput className="w-full mt-1" value={editData.name} onChange={(e) => setEditData('name', e.target.value)} />
-                            <InputError message={editErrors.name} className="mt-1" />
-                        </div>
-                        <div>
-                            <label className="text-sm font-medium text-gray-700">Replace Photo (optional)</label>
-                            <input type="file" accept="image/*" className="mt-1 block text-sm" onChange={(e) => setEditData('photo', e.target.files[0])} />
-                        </div>
-                    </form>
-                </Modal>
-            )}
-
-            {/* Map Users Modal */}
-            {showMapModalFor && (
-                <Modal title="Map Users" subtitle="Select users assigned to this child" onClose={() => setShowMapModalFor(null)}
-                    footer={<><PrimaryButton onClick={() => { saveMapping(showMapModalFor); setShowMapModalFor(null); }}>Save</PrimaryButton><button type="button" onClick={() => setShowMapModalFor(null)} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancel</button></>}
-                >
-                    <div className="grid grid-cols-2 gap-2">
-                        {assignableUsers.length === 0 ? <p className="text-sm text-gray-500">No assignable users.</p> : assignableUsers.map((u) => (
-                            <label key={u.id} className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50">
-                                <input type="checkbox" className="rounded border-gray-300 text-indigo-600" checked={(mappingByChild[showMapModalFor] || []).includes(u.id)} onChange={() => toggleMappingUser(showMapModalFor, u.id)} />
-                                <span>{u.name} <span className="text-gray-400">· {u.role}</span></span>
-                            </label>
-                        ))}
-                    </div>
-                </Modal>
-            )}
-
-            {/* Dashboard Menu Modal */}
-            {menuModalFor && (
-                <Modal title="Dashboard Menu" subtitle={`Manage items for ${menuModalFor.name}`} onClose={() => setMenuModalFor(null)} footer={null}>
-                    <div className="space-y-4">
-                        <div>
-                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Preset Items</p>
-                            <div className="space-y-2">
-                                {selectedMenuItems.map((item) => (
-                                    <div key={item.image} className={`grid grid-cols-[40px_1fr_80px_56px] items-center gap-3 rounded-lg border p-2.5 ${item.is_active ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}>
-                                        <img src={`/images/dashboard/${item.image}`} className="h-9 w-9 object-contain" />
-                                        <span className="text-sm font-medium text-gray-700">{item.label}</span>
-                                        <input type="number" min="0" value={item.sort_order} onChange={(e) => updatePresetMenuItem(item.image, 'sort_order', parseInt(e.target.value) || 0)} className="w-full rounded border-gray-300 text-center text-sm shadow-sm" />
-                                        <div className="flex justify-center">
-                                            <button type="button" onClick={() => updatePresetMenuItem(item.image, 'is_active', !item.is_active)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.is_active ? 'bg-indigo-600' : 'bg-gray-300'}`}>
-                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${item.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="mt-3 flex justify-end">
-                                <PrimaryButton onClick={saveMenuItems}>Save Preset Items</PrimaryButton>
-                            </div>
-                        </div>
-                        <div className="border-t pt-4">
-                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Custom Items</p>
-                            <CustomMenuItems child={menuModalFor} />
-                        </div>
-                    </div>
-                </Modal>
-            )}
-
-            {/* Mandatory Tasks Modal */}
-            {mandatoryModalFor && (
-                <Modal title="Mandatory Tasks Gallery" subtitle={`Upload images for ${mandatoryModalFor.name}`} onClose={() => setMandatoryModalFor(null)} footer={null}>
-                    <MandatoryTitleEditor child={mandatoryModalFor} />
-                    <div className="border-t my-4" />
-                    <MandatoryItemsManager child={mandatoryModalFor} />
-                </Modal>
-            )}
-
-            {/* Face Sheet Modal */}
-            {faceSheetModalFor && (
-                <Modal title="Face Sheet PDF" subtitle={`Manage face sheet for ${faceSheetModalFor.name}`} onClose={() => setFaceSheetModalFor(null)} footer={null}>
-                    <FaceSheetManager child={faceSheetModalFor} />
-                </Modal>
-            )}
-
-            {/* Ariya Tube Modal */}
-            {ariyaStatusModalFor && (
-                <Modal title="Ariya Tube" subtitle={`Manage menu items for ${ariyaStatusModalFor.name}`} onClose={() => setAriyaStatusModalFor(null)} footer={null}>
-                    <AriyaItemsManager child={ariyaStatusModalFor} type="status" />
-                </Modal>
-            )}
-
-            {/* Ariya Art Modal */}
-            {ariyaBehaviorModalFor && (
-                <Modal title="Ariya Art" subtitle={`Manage gallery images for ${ariyaBehaviorModalFor.name}`} onClose={() => setAriyaBehaviorModalFor(null)} footer={null}>
-                    <AriyaArtManager child={ariyaBehaviorModalFor} />
-                </Modal>
-            )}
-
-            {/* Team Training Modal */}
-            {teamModalFor && (
-                <Modal title="Team Training" subtitle={`Manage items for ${teamModalFor.name}`} onClose={() => setTeamModalFor(null)} footer={null}>
-                    <TeamTitleEditor child={teamModalFor} />
-                    <div className="border-t my-4" />
-                    <CustomTeamItems child={teamModalFor} />
-                </Modal>
-            )}
-
-            {/* Medication Modal */}
-            {medicationModalFor && (
-                <Modal title="Medication" subtitle={`Manage medication slots for ${medicationModalFor.name}`} onClose={() => setMedicationModalFor(null)} footer={null}>
-                    <MedSlotsManager child={medicationModalFor} />
-                </Modal>
-            )}
-
-            {/* Emergency Items Modal */}
-            {emergencyModalFor && (
-                <Modal title="Emergency Items" subtitle={`Manage emergency items for ${emergencyModalFor.name}`} onClose={() => setEmergencyModalFor(null)} footer={null}>
-                    <EmergencyTitleEditor child={emergencyModalFor} />
-                    <div className="border-t my-4" />
-                    <CustomEmergencyItems child={emergencyModalFor} />
-                </Modal>
-            )}
-
-            {/* Page Headers Modal */}
-            {pageHeadersModalFor && (
-                <Modal title="Page Headers" subtitle={`Manage section header images for ${pageHeadersModalFor.name}`} onClose={() => setPageHeadersModalFor(null)} footer={null}>
-                    <PageHeadersManager child={pageHeadersModalFor} />
-                </Modal>
-            )}
-
-            {/* Ariya Team Modal */}
-            {ariyaTeamModalFor && (
-                <Modal title="Ariya Team" subtitle={`Manage shift schedule for ${ariyaTeamModalFor.name}`} onClose={() => setAriyaTeamModalFor(null)} footer={null} size="max-w-6xl" noPad>
-                    <AriyaTeamManager child={ariyaTeamModalFor} users={scheduleUsers} />
-                </Modal>
-            )}
-
-            {/* Schedule Email Modal */}
-            {scheduleEmailModalFor && (
-                <Modal title="Schedule Email" subtitle={`Send daily schedule for ${scheduleEmailModalFor.name}`} onClose={() => setScheduleEmailModalFor(null)} footer={null}>
-                    <ScheduleEmailManager child={scheduleEmailModalFor} />
-                </Modal>
-            )}
-
-            {/* Delete Confirm Modal */}
-            {deleteConfirmFor && (
-                <Modal title="Delete Child" onClose={() => setDeleteConfirmFor(null)}
-                    footer={<><button type="button" onClick={() => { router.delete(route('children.destroy', deleteConfirmFor)); setDeleteConfirmFor(null); }} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Yes, delete</button><button type="button" onClick={() => setDeleteConfirmFor(null)} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancel</button></>}
-                >
-                    <p className="text-sm text-gray-600">Are you sure you want to delete this child? This action cannot be undone.</p>
-                </Modal>
-            )}
         </AuthenticatedLayout>
     );
 }

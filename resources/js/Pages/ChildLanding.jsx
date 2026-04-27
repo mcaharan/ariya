@@ -30,24 +30,27 @@ function getYouTubeEmbedUrl(url) {
 }
 
 const ALL_ITEMS = [
-    { image: 'emg.png',   label: 'Emergency',      href: '#', content_type: 'link' },
-    { image: 'mt-m.png',  label: 'Mandatory Tasks', href: '#', content_type: 'link' },
-    { image: 'f-c.png',   label: 'Face Sheet',      href: '#', content_type: 'link' },
-    { image: 'at.png',    label: 'Ariya Status',    href: '#', content_type: 'link' },
-    { image: 'arts.png',  label: 'Ariya Behavior',  href: '#', content_type: 'link' },
-    { image: 'm.png',     label: 'Medication',      href: '#', content_type: 'link' },
-    { image: 'sleep.png', label: 'Sleep',           href: '#', content_type: 'link' },
-    { image: 't.png',     label: 'Task',            href: '#', content_type: 'link' },
-    { image: 'team.png',  label: 'Team',            href: '#', content_type: 'link' },
+    { image: 'emg.png',        label: 'Emergency',      href: '#', content_type: 'link' },
+    { image: 'mt-m.png',       label: 'Mandatory Tasks', href: '#', content_type: 'link' },
+    { image: 'f-c.png',        label: 'Face Sheet',      href: '#', content_type: 'link' },
+    { image: 'at.png',         label: 'Ariya Status',    href: '#', content_type: 'link' },
+    { image: 'arts.png',       label: 'Ariya Behavior',  href: '#', content_type: 'link' },
+    { image: 'm.png',          label: 'Medication',      href: '#', content_type: 'link' },
+    { image: 'sleep.png',      label: 'Sleep',           href: '#', content_type: 'link' },
+    { image: 't.png',          label: 'Task',            href: '#', content_type: 'link' },
+    { image: 'team.png',       label: 'Team',            href: '#', content_type: 'link' },
+    { image: 'ariya-team.png', label: 'Ariya Team',      href: '#', content_type: 'link' },
 ];
 
 const MODULE_ROUTES = {
-    'emg.png':   (childId) => route('children.emergency', childId),
-    'mt-m.png':  (childId) => route('children.mandatory-tasks', childId),
-    'at.png':    (childId) => route('children.ariya', { child: childId, type: 'status' }),
-    'arts.png':  (childId) => route('children.gallery', { child: childId, section: 'ariya-art' }),
-    'm.png':     (childId) => route('children.medication', childId),
-    't.png':  (childId) => route('children.team-training', childId),
+    'emg.png':        (childId) => route('children.emergency', childId),
+    'mt-m.png':       (childId) => route('children.mandatory-tasks', childId),
+    'at.png':         (childId) => route('children.ariya', { child: childId, type: 'status' }),
+    'arts.png':       (childId) => route('children.gallery', { child: childId, section: 'ariya-art' }),
+    'm.png':          (childId) => route('children.medication', childId),
+    't.png':          (childId) => route('children.team-training', childId),
+    'team.png':       (childId) => route('children.ariya-team', childId),
+    'ariya-team.png': (childId) => route('children.ariya-team', childId),
 };
 
 export default function ChildLanding({ child, menuItems = [] }) {
@@ -143,16 +146,6 @@ export default function ChildLanding({ child, menuItems = [] }) {
 
                 {/* Content */}
                 <div className="px-8 py-6">
-
-                    {/* FAQ button */}
-                    <div className="mb-8 flex justify-center">
-                        <a
-                            href="#"
-                            className="rounded-full border-2 border-gray-400 px-8 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-200 transition-colors"
-                        >
-                            {child.name} FAQ
-                        </a>
-                    </div>
 
                     {/* Icon grid — 5 per row, last row centered */}
                     <div className="flex flex-wrap justify-center gap-5">

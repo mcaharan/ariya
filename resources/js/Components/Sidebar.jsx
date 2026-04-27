@@ -24,6 +24,24 @@ function Icon({ name, className = 'h-5 w-5' }) {
                     <path strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
             );
+        case 'ariya':
+            return (
+                <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+            );
+        case 'upload':
+            return (
+                <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+            );
+        case 'mail':
+            return (
+                <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+            );
         case 'logout':
             return (
                 <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -109,6 +127,25 @@ export default function Sidebar({ user }) {
                     </div>
                 )}
 
+                {canAccess('children') && (
+                    <>
+                        <Divider />
+                        <div className="mb-2">
+                            <SectionLabel>Manage Ariya</SectionLabel>
+                            <div className="space-y-0.5">
+                                <SidebarLink href={route('admin.content-manager')} active={route().current('admin.content-manager')}>
+                                    <Icon name="ariya" className="h-[18px] w-[18px] shrink-0" />
+                                    <span>Content Manager</span>
+                                </SidebarLink>
+                                <SidebarLink href={route('admin.media-upload')} active={route().current('admin.media-upload')}>
+                                    <Icon name="upload" className="h-[18px] w-[18px] shrink-0" />
+                                    <span>Media Upload</span>
+                                </SidebarLink>
+                            </div>
+                        </div>
+                    </>
+                )}
+
                 {(canAccess('users') || canAccess('children')) && (
                     <>
                         <Divider />
@@ -122,9 +159,15 @@ export default function Sidebar({ user }) {
                                     </SidebarLink>
                                 )}
                                 {canAccess('children') && (
-                                    <SidebarLink href={route('children.index')} active={route().current('children.*')}>
+                                    <SidebarLink href={route('children.index')} active={route().current('children.index')}>
                                         <Icon name="child" className="h-[18px] w-[18px] shrink-0" />
                                         <span>Child</span>
+                                    </SidebarLink>
+                                )}
+                                {canAccess('children') && (
+                                    <SidebarLink href={route('admin.schedule-email')} active={route().current('admin.schedule-email')}>
+                                        <Icon name="mail" className="h-[18px] w-[18px] shrink-0" />
+                                        <span>Schedule Email</span>
                                     </SidebarLink>
                                 )}
                             </div>

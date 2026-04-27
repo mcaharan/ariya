@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\ChildrenController;
+use App\Http\Controllers\S3UploadController;
 use App\Models\Child;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
@@ -42,9 +43,16 @@ Route::get('/dashboard', function () {
         })->orderBy('name')->get(['id', 'name', 'photo'])
         : collect();
 
+    $scheduleEmailCount = $user?->isSuperadmin()
+        ? Child::whereNotNull('schedule_email_recipients')
+            ->where('schedule_email_recipients', '!=', '[]')
+            ->count()
+        : 0;
+
     return Inertia::render('Dashboard', [
-        'assignedChildren' => $assignedChildren,
-        'isSuperadmin' => $user?->isSuperadmin() ?? false,
+        'assignedChildren'    => $assignedChildren,
+        'isSuperadmin'        => $user?->isSuperadmin() ?? false,
+        'scheduleEmailCount'  => $scheduleEmailCount,
     ]);
 })->middleware(['auth', 'verified'])->name('dashboard');
 
@@ -118,6 +126,27 @@ Route::middleware('auth')->group(function () {
     Route::post('/children/{child}/team-sub-items/{teamItem}/{subItem}', [ChildrenController::class, 'updateTeamSubItem'])->name('children.team-sub-items.update');
     Route::delete('/children/{child}/team-sub-items/{teamItem}/{subItem}', [ChildrenController::class, 'destroyTeamSubItem'])->name('children.team-sub-items.destroy');
 
+    // Content Manager
+    Route::get('/admin/content-manager', [ChildrenController::class, 'contentManagerIndex'])->name('admin.content-manager');
+
+    // Schedule Email
+    Route::get('/admin/schedule-email', [ChildrenController::class, 'scheduleEmailIndex'])->name('admin.schedule-email');
+    Route::post('/children/{child}/schedule-email-recipients', [ChildrenController::class, 'updateScheduleEmailRecipients'])->name('children.schedule-email-recipients');
+    Route::post('/children/{child}/send-daily-schedule', [ChildrenController::class, 'sendDailyScheduleEmail'])->name('children.send-daily-schedule');
+    Route::get('/children/{child}/schedule-email-preview', [ChildrenController::class, 'previewScheduleEmail'])->name('children.schedule-email-preview');
+
+    // Weekly Schedule Email
+    Route::post('/children/{child}/weekly-email-settings', [ChildrenController::class, 'updateWeeklyEmailSettings'])->name('children.weekly-email-settings');
+    Route::post('/children/{child}/send-weekly-schedule', [ChildrenController::class, 'sendWeeklyScheduleEmail'])->name('children.send-weekly-schedule');
+    Route::get('/children/{child}/weekly-email-preview', [ChildrenController::class, 'previewWeeklyScheduleEmail'])->name('children.weekly-email-preview');
+
+    // Ariya Team
+    Route::get('/children/{child}/ariya-team', [ChildrenController::class, 'ariyaTeam'])->name('children.ariya-team');
+    Route::post('/children/{child}/ariya-team/calendar-url', [ChildrenController::class, 'updateAriyaTeamCalendarUrl'])->name('children.ariya-team.calendar-url');
+    Route::post('/children/{child}/team-schedules', [ChildrenController::class, 'storeTeamSchedule'])->name('children.team-schedules.store');
+    Route::post('/children/{child}/team-schedules/{schedule}', [ChildrenController::class, 'updateTeamSchedule'])->name('children.team-schedules.update');
+    Route::delete('/children/{child}/team-schedules/{schedule}', [ChildrenController::class, 'destroyTeamSchedule'])->name('children.team-schedules.destroy');
+
     // Medication
     Route::get('/children/{child}/medication', [ChildrenController::class, 'medication'])->name('children.medication');
     Route::post('/children/{child}/medication/{slot}/confirm', [ChildrenController::class, 'confirmMedSlot'])->name('children.medication.confirm');
@@ -126,6 +155,23 @@ Route::middleware('auth')->group(function () {
     Route::delete('/children/{child}/med-slots/{slot}', [ChildrenController::class, 'destroyMedSlot'])->name('children.med-slots.destroy');
     Route::post('/children/{child}/med-slots/{slot}/items', [ChildrenController::class, 'storeMedItem'])->name('children.med-items.store');
     Route::delete('/children/{child}/med-slots/{slot}/items/{item}', [ChildrenController::class, 'destroyMedItem'])->name('children.med-items.destroy');
+});
+
+Route::middleware('auth')->group(function () {
+    Route::get('/admin/media-upload', function () {
+        $actor = auth()->user();
+        if (!$actor || !$actor->isSuperadmin()) abort(403);
+        return Inertia::render('Admin/MediaUpload');
+    })->name('admin.media-upload');
+
+    Route::post('/s3/upload', [S3UploadController::class, 'upload'])->name('s3.upload');
+
+    Route::get('/s3-file/{path}', function (string $path) {
+        $path = ltrim($path, '/');
+        if ($path === '' || str_contains($path, '..')) abort(404);
+        if (! Storage::disk('s3')->exists($path)) abort(404);
+        return Storage::disk('s3')->response($path);
+    })->where('path', '.*')->name('s3.file');
 });
 
 require __DIR__.'/auth.php';
