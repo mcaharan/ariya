@@ -1,0 +1,15 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Canonical URL: remove /public from browser URL.
+    RewriteRule ^public(?:/(.*))?$ /$1 [R=301,L]
+
+    # Serve existing files/directories directly.
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Route all other requests through Laravel's public directory.
+    RewriteRule ^$ public/index.php [L]
+    RewriteRule (.*) public/$1 [L]
+</IfModule>
