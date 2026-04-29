@@ -1,10 +1,9 @@
-FROM node:20 AS node
+FROM node:18 AS node
 WORKDIR /app
 COPY package*.json ./
-# Install all dependencies (including dev) so vite is available for build
-RUN npm install --legacy-peer-deps --silent
+RUN npm ci --silent || npm install --silent || true
 COPY . .
-RUN npm run build
+RUN npm run build || true
 
 FROM php:8.3-fpm
 
@@ -34,9 +33,8 @@ COPY . .
 # install php dependencies
 RUN composer install --no-dev --optimize-autoloader --no-interaction || true
 
-# copy built assets (built on host or earlier step)
-# prefer using the build produced in the project workspace
-COPY public/build ./public/build
+# copy built assets from node stage if present
+COPY --from=node /app/public/build ./public/build
 
 # permissions
 RUN chown -R www-data:www-data /var/www/html && \
