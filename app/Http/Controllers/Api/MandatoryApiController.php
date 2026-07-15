@@ -28,7 +28,7 @@ class MandatoryApiController extends Controller
         $items = ChildMandatoryItem::where('child_id', $child->id)
             ->where('is_active', true)
             ->orderBy('sort_order')
-            ->get(['id', 'image', 'icon_path', 'title', 'content', 'content_type', 'content_value']);
+            ->get(['id', 'image', 'title']);
 
         $headerImage = ChildPageHeader::where('child_id', $child->id)
             ->where('page_key', 'mandatory-tasks')

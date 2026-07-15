@@ -159,12 +159,11 @@ function DashboardMenuPanel({ child }) {
     // because buildItems only includes them if they exist in child.menu_items.
     const buildItems = (existing) => {
         if (existing.length === 0) {
-            // No DB records yet — show all presets as inactive so admin can enable them
-            return ALL_MENU_ITEMS.map((m) => ({ image: m.image, label: m.label, is_active: false, sort_order: 99 }));
+            return ALL_MENU_ITEMS.map((m) => ({ id: null, image: m.image, label: m.label, icon_path: null, is_active: false, sort_order: 99 }));
         }
         return existing
-            .filter((i) => !i.icon_path) // exclude custom items (they have icon_path)
-            .map((i) => ({ image: i.image, label: i.label, is_active: i.is_active, sort_order: i.sort_order }));
+            .filter((i) => !i.icon_path)
+            .map((i) => ({ id: i.id, image: i.image, label: i.label, icon_path: i.icon_path, is_active: i.is_active, sort_order: i.sort_order }));
     };
 
     // Items from ALL_MENU_ITEMS not currently in the list (available to restore)
@@ -220,6 +219,18 @@ function DashboardMenuPanel({ child }) {
         router.post(route('children.menu-items.sync', child.id), { items: payload }, { preserveScroll: true, onSuccess: () => { setDirty(false); toast('Menu saved.'); } });
     };
 
+    const uploadIcon = (item, file) => {
+        if (!item.id || !file) return;
+        const fd = new FormData();
+        fd.append('icon', file);
+        fd.append('label', item.label);
+        fd.append('content_type', 'link');
+        fd.append('sort_order', item.sort_order);
+        fd.append('is_active', item.is_active ? '1' : '0');
+        fd.append('_method', 'POST');
+        router.post(route('children.menu-items.update', { child: child.id, menuItem: item.id }), fd, { preserveScroll: true, forceFormData: true, onSuccess: () => toast('Icon updated.') });
+    };
+
     return (
         <div className="space-y-6">
             <div>
@@ -232,27 +243,45 @@ function DashboardMenuPanel({ child }) {
                             onDragStart={() => onDragStart(idx)}
                             onDragOver={(e) => onDragOver(e, idx)}
                             onDragEnd={onDragEnd}
-                            className={`grid grid-cols-[20px_40px_1fr_auto_56px_24px] items-center gap-3 rounded-lg border p-2.5 cursor-grab active:cursor-grabbing transition-opacity ${dragIdx === idx ? 'opacity-50' : ''} ${item.is_active ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}
+                            className={`rounded-lg border p-2.5 cursor-grab active:cursor-grabbing transition-opacity ${dragIdx === idx ? 'opacity-50' : ''} ${item.is_active ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}
                         >
-                            <svg className="h-4 w-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h16M4 16h16"/></svg>
-                            <img src={`/images/dashboard/${item.image}`} className="h-9 w-9 object-contain" alt="" />
-                            <input
-                                type="text"
-                                value={item.label}
-                                onChange={(e) => update(item.image, 'label', e.target.value)}
-                                className="rounded border-gray-300 text-sm shadow-sm w-full"
-                            />
-                            <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 whitespace-nowrap">
-                                → {IMAGE_TO_SECTION[item.image] || '—'}
-                            </span>
-                            <div className="flex justify-center">
-                                <button type="button" onClick={() => update(item.image, 'is_active', !item.is_active)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.is_active ? 'bg-indigo-600' : 'bg-gray-300'}`}>
-                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${item.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
+                            <div className="grid grid-cols-[20px_48px_1fr_auto_56px_24px] items-center gap-3">
+                                <svg className="h-4 w-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h16M4 16h16"/></svg>
+                                {/* Icon preview */}
+                                <div className="relative group/icon">
+                                    <img
+                                        src={item.icon_path ? `/storage/${item.icon_path}` : `/images/dashboard/${item.image}`}
+                                        className="h-10 w-10 object-contain rounded"
+                                        alt=""
+                                    />
+                                    {item.id && (
+                                        <label className="absolute inset-0 flex items-center justify-center rounded bg-black/40 opacity-0 group-hover/icon:opacity-100 transition-opacity cursor-pointer" title="Change icon">
+                                            <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                                            <input type="file" accept="image/*" className="sr-only" onChange={(e) => uploadIcon(item, e.target.files[0])} />
+                                        </label>
+                                    )}
+                                </div>
+                                <input
+                                    type="text"
+                                    value={item.label}
+                                    onChange={(e) => update(item.image, 'label', e.target.value)}
+                                    className="rounded border-gray-300 text-sm shadow-sm w-full"
+                                />
+                                <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 whitespace-nowrap">
+                                    → {IMAGE_TO_SECTION[item.image] || '—'}
+                                </span>
+                                <div className="flex justify-center">
+                                    <button type="button" onClick={() => update(item.image, 'is_active', !item.is_active)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.is_active ? 'bg-indigo-600' : 'bg-gray-300'}`}>
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${item.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+                                <button type="button" onClick={() => remove(item.image)} className="flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors" title="Remove">
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
                                 </button>
                             </div>
-                            <button type="button" onClick={() => remove(item.image)} className="flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors" title="Remove">
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                            </button>
+                            {!item.id && (
+                                <p className="mt-1.5 ml-[68px] text-[10px] text-amber-600">Save preset items first to enable icon upload.</p>
+                            )}
                         </div>
                     ))}
                 </div>

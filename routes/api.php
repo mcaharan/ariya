@@ -8,9 +8,15 @@ use App\Http\Controllers\Api\MandatoryApiController;
 use App\Http\Controllers\Api\MedicationApiController;
 use App\Http\Controllers\Api\GalleryApiController;
 use App\Http\Controllers\Api\TeamTrainingApiController;
+use App\Http\Controllers\Api\DeviceApiController;
 
 // Public auth routes
 Route::post('/login', [AuthApiController::class, 'login']);
+
+// Device-based one-tap auth (public)
+Route::post('/device/register', [DeviceApiController::class, 'register']);
+Route::get('/device/status/{deviceId}', [DeviceApiController::class, 'status']);
+Route::post('/device/login', [DeviceApiController::class, 'login']);
 
 // Authenticated routes
 Route::middleware('auth:sanctum')->group(function () {

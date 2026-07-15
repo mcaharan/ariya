@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\ChildrenController;
+use App\Http\Controllers\DeviceRegistrationController;
 use App\Http\Controllers\S3UploadController;
 use App\Models\Child;
 use App\Models\User;
@@ -125,6 +126,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/children/{child}/team-sub-items/{teamItem}', [ChildrenController::class, 'storeTeamSubItem'])->name('children.team-sub-items.store');
     Route::post('/children/{child}/team-sub-items/{teamItem}/{subItem}', [ChildrenController::class, 'updateTeamSubItem'])->name('children.team-sub-items.update');
     Route::delete('/children/{child}/team-sub-items/{teamItem}/{subItem}', [ChildrenController::class, 'destroyTeamSubItem'])->name('children.team-sub-items.destroy');
+
+    // Device Registrations (admin)
+    Route::get('/admin/devices', [DeviceRegistrationController::class, 'index'])->name('admin.devices');
+    Route::put('/admin/devices/{device}/approve', [DeviceRegistrationController::class, 'approve'])->name('admin.devices.approve');
+    Route::put('/admin/devices/{device}/reject', [DeviceRegistrationController::class, 'reject'])->name('admin.devices.reject');
+    Route::delete('/admin/devices/{device}', [DeviceRegistrationController::class, 'destroy'])->name('admin.devices.destroy');
 
     // Content Manager
     Route::get('/admin/content-manager', [ChildrenController::class, 'contentManagerIndex'])->name('admin.content-manager');
